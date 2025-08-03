@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "TargetProcess Rule Generator",
+  "version": "1.0.0",
+  "description": "Generate automation and validation rules for TargetProcess with a simple floating button",
+  
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  
+  "host_permissions": [
+    "*://*.targetprocess.com/*",
+    "*://*.tp-devops.com/*", 
+    "*://*.tpondemand.com/*",
+    "http://localhost:8000/*",
+    "<all_urls>"
+  ],
+  
+  "background": {
+    "service_worker": "background.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.targetprocess.com/*",
+        "*://*.tp-devops.com/*",
+        "*://*.tpondemand.com/*",
+        "http://localhost:*/*",
+        "https://localhost:*/*",
+        "<all_urls>"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_end"
+    }
+  ],
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Generate TargetProcess Rules"
+  }
+}

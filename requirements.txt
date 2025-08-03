@@ -1,0 +1,13 @@
+streamlit
+google-generativeai
+chromadb
+sentence-transformers
+python-dotenv
+pandas
+markdown
+beautifulsoup4
+transformers
+torch
+requests
+flask
+flask-cors
