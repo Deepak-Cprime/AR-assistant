@@ -1,22 +1,44 @@
 """
-FastAPI server for TargetProcess automation and validation rules
-Simple, focused API for generating rules based on user prompts
+FastAPI server for TargetProcess automation rules using full RAG system
+Uses the same system as Streamlit app with Gemini AI, vector database, and TP integration
 """
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import logging
+import os
+import sys
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Add parent directory to path to import from src
+sys.path.append(str(Path(__file__).parent.parent))
+
+# Import the full RAG system (same as Streamlit)
+from src.rag_system import RAGSystem
+from config.config import *
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Load environment variables
+env_file = Path(__file__).parent.parent / ".env"
+logger.info(f"Looking for .env file at: {env_file}")
+if env_file.exists():
+    logger.info(f"Loading .env file: {env_file}")
+    load_dotenv(env_file)
+    logger.info(f"TargetProcess domain from env: {os.getenv('TARGETPROCESS_DOMAIN')}")
+    logger.info(f"TargetProcess token configured: {bool(os.getenv('TARGETPROCESS_TOKEN'))}")
+else:
+    logger.warning(f".env file not found at: {env_file}")
+
 # Initialize FastAPI app
 app = FastAPI(
-    title="TargetProcess Rule Generator API",
-    description="Generate automation and validation rules for TargetProcess",
-    version="1.0.0"
+    title="TargetProcess Rule Generator API (RAG-Powered)",
+    description="Generate and explain automation rules using RAG system with Gemini AI",
+    version="2.0.0"
 )
 
 # Enable CORS for Chrome extension
@@ -28,33 +50,87 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request models
+# Initialize RAG system (same as Streamlit)
+rag_system = None
+
+def initialize_rag_system():
+    """Initialize RAG system exactly like Streamlit app"""
+    global rag_system
+    
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        logger.error("GEMINI_API_KEY not found in environment variables")
+        raise Exception("GEMINI_API_KEY not configured")
+    
+    # Get TargetProcess credentials
+    tp_domain = os.getenv("TARGETPROCESS_DOMAIN")
+    tp_token = os.getenv("TARGETPROCESS_TOKEN")
+    
+    logger.info(f"TargetProcess domain: {tp_domain}")
+    logger.info(f"TargetProcess token configured: {bool(tp_token)}")
+    
+    try:
+        rag_system = RAGSystem(
+            docs_source_dir=str(DOCS_SOURCE_DIR),
+            vector_db_path=str(VECTOR_DB_PATH),
+            collection_name=COLLECTION_NAME,
+            gemini_api_key=api_key,
+            embedding_model=EMBEDDING_MODEL,
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+            tp_domain=tp_domain,
+            tp_token=tp_token
+        )
+        
+        # Initialize database
+        logger.info("Initializing RAG system knowledge base...")
+        rag_system.initialize_database()
+        logger.info("RAG system initialized successfully")
+        
+        return rag_system
+    
+    except Exception as e:
+        logger.error(f"Failed to initialize RAG system: {e}")
+        raise
+
+# Request/Response models
 class RuleRequest(BaseModel):
     prompt: str
-    rule_type: str  # "automation" or "validation"
+    rule_type: str = "create_automation"  # general, create_automation, explain_rule, improve_rule
     entity_type: Optional[str] = "UserStory"
+    doc_type_filter: Optional[str] = None
+    max_results: Optional[int] = 5  # Same as Streamlit default
+    similarity_threshold: Optional[float] = 0.7  # Same as Streamlit default
 
 class RuleResponse(BaseModel):
     success: bool
-    rule_name: str
-    entity: str
-    trigger: str
-    field: str
-    condition: str
-    value: str
-    javascript_code: str
-    description: str
+    response: str
+    context_docs: List[Dict] = []
+    metadata: Dict[str, Any] = {}
     error: Optional[str] = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize RAG system on startup"""
+    try:
+        initialize_rag_system()
+    except Exception as e:
+        logger.error(f"Failed to start RAG system: {e}")
+        # Don't fail startup, but log the error
 
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "message": "TargetProcess Rule Generator API",
-        "version": "1.0.0",
+        "message": "TargetProcess Rule Generator API (RAG-Powered)",
+        "version": "2.0.0",
         "endpoints": {
             "health": "/health",
-            "generate_rule": "/generate-rule"
+            "generate_rule": "/generate-rule",
+            "explain_rule": "/explain-rule", 
+            "improve_rule": "/improve-rule",
+            "general_query": "/general-query",
+            "system_stats": "/system-stats"
         }
     }
 
@@ -63,287 +139,215 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "service": "TargetProcess Rule Generator"
+        "service": "TargetProcess Rule Generator (RAG-Powered)",
+        "rag_system_initialized": rag_system is not None,
+        "gemini_api_configured": bool(os.getenv("GEMINI_API_KEY"))
     }
+
+@app.get("/system-stats")
+async def get_system_stats():
+    """Get system statistics"""
+    if not rag_system:
+        raise HTTPException(status_code=503, detail="RAG system not initialized")
+    
+    try:
+        stats = rag_system.get_system_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting system stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate-rule", response_model=RuleResponse)
 async def generate_rule(request: RuleRequest):
     """
-    Generate automation or validation rule based on user prompt
+    Generate automation rule using full RAG system (same as Streamlit)
     """
+    if not rag_system:
+        raise HTTPException(status_code=503, detail="RAG system not initialized. Please check GEMINI_API_KEY configuration.")
+    
     try:
-        logger.info(f"Generating {request.rule_type} rule for: {request.prompt}")
+        logger.info(f"Generating rule: {request.prompt}")
+        logger.info(f"Query params: type={request.rule_type}, max_results={request.max_results}, threshold={request.similarity_threshold}")
         
-        # Parse the prompt to understand the intent
-        prompt_lower = request.prompt.lower()
+        # Use RAG system query method (same as Streamlit)
+        result = rag_system.query(
+            user_query=request.prompt,
+            query_type=request.rule_type,
+            doc_type_filter=request.doc_type_filter,
+            max_results=request.max_results,
+            similarity_threshold=request.similarity_threshold
+        )
         
-        # Determine rule components based on prompt analysis
-        rule_components = analyze_prompt(request.prompt, request.rule_type, request.entity_type)
+        logger.info(f"RAG system result: success={result.get('success')}, response_length={len(result.get('response', ''))}, context_docs={len(result.get('context_docs', []))}")
         
-        # Generate the appropriate rule
-        if request.rule_type == "automation":
-            rule = generate_automation_rule(rule_components)
-        elif request.rule_type == "validation":
-            rule = generate_validation_rule(rule_components)
+        if result['success']:
+            logger.info("✅ Rule generation successful")
+            return RuleResponse(
+                success=True,
+                response=result['response'],
+                context_docs=result['context_docs'],
+                metadata=result['metadata']
+            )
         else:
-            raise HTTPException(status_code=400, detail="Invalid rule_type. Must be 'automation' or 'validation'")
-        
-        return RuleResponse(**rule)
+            logger.error(f"❌ Rule generation failed: {result.get('error', 'Unknown error')}")
+            return RuleResponse(
+                success=False,
+                response=result.get('response', 'Failed to generate rule'),
+                error=result.get('error', 'Unknown error'),
+                context_docs=result.get('context_docs', []),
+                metadata=result.get('metadata', {})
+            )
         
     except Exception as e:
-        logger.error(f"Error generating rule: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"💥 Exception in rule generation: {e}")
+        logger.exception("Full exception traceback:")
+        return RuleResponse(
+            success=False,
+            response=f"Error: {str(e)}",
+            error=str(e)
+        )
 
-def analyze_prompt(prompt: str, rule_type: str, entity_type: str) -> Dict[str, Any]:
+@app.post("/explain-rule", response_model=RuleResponse)
+async def explain_rule(request: RuleRequest):
     """
-    Analyze user prompt to extract rule components
+    Explain existing automation rule using RAG system
     """
-    prompt_lower = prompt.lower()
+    if not rag_system:
+        raise HTTPException(status_code=503, detail="RAG system not initialized")
     
-    # Extract entities
-    entities = {
-        'user story': 'UserStory', 'story': 'UserStory', 'userstory': 'UserStory',
-        'bug': 'Bug', 'bugs': 'Bug', 'defect': 'Bug',
-        'task': 'Task', 'tasks': 'Task',
-        'feature': 'Feature', 'features': 'Feature',
-        'epic': 'Epic', 'epics': 'Epic'
-    }
-    
-    detected_entity = entity_type
-    for keyword, entity in entities.items():
-        if keyword in prompt_lower:
-            detected_entity = entity
-            break
-    
-    # Extract actions/triggers
-    triggers = {
-        'create': 'Created', 'add': 'Created', 'new': 'Created',
-        'update': 'Updated', 'change': 'Updated', 'modify': 'Updated',
-        'move': 'Updated', 'assign': 'Updated', 'set': 'Updated',
-        'delete': 'Deleted', 'remove': 'Deleted'
-    }
-    
-    detected_trigger = 'Updated'  # Default
-    for keyword, trigger in triggers.items():
-        if keyword in prompt_lower:
-            detected_trigger = trigger
-            break
-    
-    # Extract fields
-    fields = {
-        'state': 'State', 'status': 'State',
-        'owner': 'Owner', 'assign': 'Owner', 'user': 'Owner',
-        'priority': 'Priority',
-        'effort': 'Effort', 'estimate': 'Effort',
-        'project': 'Project',
-        'team': 'Team'
-    }
-    
-    detected_field = 'State'  # Default
-    for keyword, field in fields.items():
-        if keyword in prompt_lower:
-            detected_field = field
-            break
-    
-    # Extract conditions/values
-    conditions = []
-    if 'block' in prompt_lower:
-        conditions.append({'field': 'State', 'value': 'Blocked'})
-    if 'done' in prompt_lower or 'complete' in prompt_lower:
-        conditions.append({'field': 'State', 'value': 'Done'})
-    if 'progress' in prompt_lower:
-        conditions.append({'field': 'State', 'value': 'In Progress'})
-    if 'high' in prompt_lower and 'priority' in prompt_lower:
-        conditions.append({'field': 'Priority', 'value': 'High'})
-    
-    return {
-        'prompt': prompt,
-        'entity': detected_entity,
-        'trigger': detected_trigger,
-        'field': detected_field,
-        'conditions': conditions if conditions else [{'field': detected_field, 'value': 'any change'}],
-        'rule_type': rule_type
-    }
-
-def generate_automation_rule(components: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Generate automation rule based on analyzed components
-    """
-    entity = components['entity']
-    trigger = components['trigger']
-    field = components['field']
-    conditions = components['conditions']
-    prompt = components['prompt']
-    
-    # Generate rule name
-    rule_name = f"Auto-action when {entity} {field.lower()} changes"
-    
-    # Generate JavaScript code based on the prompt
-    if 'bug' in prompt.lower() and 'block' in prompt.lower():
-        # Create bug when something is blocked
-        javascript_code = f'''const utils = require("utils");
-
-if (args.ChangedFields.contains("{field}") && args.Current.{field}.Name === "{conditions[0]['value']}") {{
-    return utils.createResource("Bug", {{
-        Name: `Issue: ${{args.Current.Name}} is blocked`,
-        Description: `Automatically created because ${{args.ResourceType}} "${{args.Current.Name}}" was moved to {conditions[0]['value']} state.`,
-        Project: {{ Id: args.Current.Project.Id }},
-        {entity}: {{ Id: args.ResourceId }},
-        Priority: {{ Name: "High" }},
-        Owner: args.Current.Owner
-    }});
-}}'''
-    elif 'task' in prompt.lower() and 'create' in prompt.lower():
-        # Create task for user story
-        javascript_code = f'''const utils = require("utils");
-
-if (args.Modification === "Created" || (args.ChangedFields.contains("{field}") && args.Current.{field}.Name === "{conditions[0]['value']}")) {{
-    return utils.createResource("Task", {{
-        Name: `Implementation: ${{args.Current.Name}}`,
-        Description: `Auto-created task for ${{args.ResourceType.toLowerCase()}} implementation`,
-        Project: {{ Id: args.Current.Project.Id }},
-        {entity}: {{ Id: args.ResourceId }},
-        Owner: args.Current.Owner,
-        EntityState: {{ Name: "To Do" }}
-    }});
-}}'''
-    elif 'assign' in prompt.lower():
-        # Auto-assign based on criteria
-        javascript_code = f'''const utils = require("utils");
-
-if (args.ChangedFields.contains("{field}")) {{
-    let assigneeId = null;
-    
-    // Assignment logic based on conditions
-    if (args.Current.{field} && args.Current.{field}.Name === "{conditions[0]['value']}") {{
-        // Assign to project manager or team lead
-        assigneeId = args.Current.Project.Owner ? args.Current.Project.Owner.Id : null;
-    }}
-    
-    if (assigneeId && (!args.Current.Owner || args.Current.Owner.Id !== assigneeId)) {{
-        return utils.updateResource(args.ResourceType, args.ResourceId, {{
-            Owner: {{ Id: assigneeId }}
-        }});
-    }}
-}}'''
-    else:
-        # Generic automation rule
-        javascript_code = f'''const utils = require("utils");
-
-if (args.ChangedFields.contains("{field}")) {{
-    const currentValue = args.Current.{field} ? args.Current.{field}.Name : null;
-    const previousValue = args.Previous && args.Previous.{field} ? args.Previous.{field}.Name : null;
-    
-    if (currentValue === "{conditions[0]['value']}" && currentValue !== previousValue) {{
-        // Perform your automation action here
-        console.log(`${{args.ResourceType}} ${{args.Current.Name}} {field.lower()} changed to ${{currentValue}}`);
+    try:
+        logger.info(f"Explaining rule: {request.prompt[:100]}...")
         
-        // Example: Update another field or create related entity
-        return utils.updateResource(args.ResourceType, args.ResourceId, {{
-            // Add your field updates here
-            // Example: CustomField: "Automated Update"
-        }});
-    }}
-}}'''
-    
-    return {
-        "success": True,
-        "rule_name": rule_name,
-        "entity": entity,
-        "trigger": trigger,
-        "field": field,
-        "condition": "equals" if conditions[0]['value'] != 'any change' else "changed",
-        "value": conditions[0]['value'],
-        "javascript_code": javascript_code,
-        "description": f"Automatically performs actions when {entity} {field} meets specified conditions based on: {prompt}"
-    }
+        # Use RAG system with explain_rule query type
+        result = rag_system.query(
+            user_query=request.prompt,
+            query_type="explain_rule",
+            doc_type_filter=request.doc_type_filter,
+            max_results=request.max_results,
+            similarity_threshold=request.similarity_threshold
+        )
+        
+        if result['success']:
+            return RuleResponse(
+                success=True,
+                response=result['response'],
+                context_docs=result['context_docs'],
+                metadata=result['metadata']
+            )
+        else:
+            return RuleResponse(
+                success=False,
+                response=result.get('response', 'Failed to explain rule'),
+                error=result.get('error', 'Unknown error'),
+                context_docs=result.get('context_docs', []),
+                metadata=result.get('metadata', {})
+            )
+        
+    except Exception as e:
+        logger.error(f"Error explaining rule: {e}")
+        return RuleResponse(
+            success=False,
+            response=f"Error: {str(e)}",
+            error=str(e)
+        )
 
-def generate_validation_rule(components: Dict[str, Any]) -> Dict[str, Any]:
+@app.post("/improve-rule", response_model=RuleResponse)
+async def improve_rule(request: RuleRequest):
     """
-    Generate validation rule based on analyzed components
+    Improve existing automation rule using RAG system (same as Streamlit)
     """
-    entity = components['entity']
-    field = components['field']
-    conditions = components['conditions']
-    prompt = components['prompt']
+    if not rag_system:
+        raise HTTPException(status_code=503, detail="RAG system not initialized")
     
-    rule_name = f"Validate {entity} {field.lower()} requirements"
-    
-    # Generate validation JavaScript code
-    if 'require' in prompt.lower() or 'must' in prompt.lower():
-        javascript_code = f'''// Validation rule based on: {prompt}
+    try:
+        logger.info(f"Improving rule: {request.prompt[:100]}...")
+        
+        # Use RAG system with improve_rule query type
+        result = rag_system.query(
+            user_query=request.prompt,
+            query_type="improve_rule",
+            doc_type_filter=request.doc_type_filter,
+            max_results=request.max_results,
+            similarity_threshold=request.similarity_threshold
+        )
+        
+        logger.info(f"RAG system result: success={result.get('success')}, response_length={len(result.get('response', ''))}, context_docs={len(result.get('context_docs', []))}")
+        
+        if result['success']:
+            logger.info("✅ Rule improvement successful")
+            return RuleResponse(
+                success=True,
+                response=result['response'],
+                context_docs=result['context_docs'],
+                metadata=result['metadata']
+            )
+        else:
+            logger.error(f"❌ Rule improvement failed: {result.get('error', 'Unknown error')}")
+            return RuleResponse(
+                success=False,
+                response=result.get('response', 'Failed to improve rule'),
+                error=result.get('error', 'Unknown error'),
+                context_docs=result.get('context_docs', []),
+                metadata=result.get('metadata', {})
+            )
+        
+    except Exception as e:
+        logger.error(f"💥 Exception in rule improvement: {e}")
+        logger.exception("Full exception traceback:")
+        return RuleResponse(
+            success=False,
+            response=f"Error: {str(e)}",
+            error=str(e)
+        )
 
-if (args.Modification === "Created" || args.ChangedFields.contains("{field}")) {{
-    const errors = [];
+@app.post("/general-query", response_model=RuleResponse)
+async def general_query(request: RuleRequest):
+    """
+    Answer general questions using RAG system (same as Streamlit)
+    """
+    if not rag_system:
+        raise HTTPException(status_code=503, detail="RAG system not initialized")
     
-    // Validation logic based on your requirements
-    if (!args.Current.{field} || args.Current.{field}.Name === "") {{
-        errors.push("{field} is required");
-    }}
-    
-    if (args.Current.{field} && args.Current.{field}.Name === "{conditions[0]['value']}" && !args.Current.Owner) {{
-        errors.push("Items in {conditions[0]['value']} state must have an assigned owner");
-    }}
-    
-    if (args.Current.Priority && args.Current.Priority.Name === "Critical" && !args.Current.Owner) {{
-        errors.push("Critical items must be assigned to someone");
-    }}
-    
-    // Return validation errors if any
-    if (errors.length > 0) {{
-        return {{
-            success: false,
-            errors: errors
-        }};
-    }}
-    
-    return {{ success: true }};
-}}'''
-    else:
-        # Generic validation rule
-        javascript_code = f'''// Validation rule for {entity} {field}
-
-if (args.Modification === "Created" || args.Modification === "Updated") {{
-    const errors = [];
-    
-    // Basic validation rules
-    if (!args.Current.Name || args.Current.Name.trim() === "") {{
-        errors.push("Name is required");
-    }}
-    
-    if (args.Current.Name && args.Current.Name.length < 5) {{
-        errors.push("Name must be at least 5 characters");
-    }}
-    
-    if (args.Current.{field} && args.Current.{field}.Name === "{conditions[0]['value']}") {{
-        // Add specific validation for this condition
-        if (!args.Current.Description || args.Current.Description.trim() === "") {{
-            errors.push("Description is required when {field} is {conditions[0]['value']}");
-        }}
-    }}
-    
-    // Return validation result
-    if (errors.length > 0) {{
-        return {{
-            success: false,
-            errors: errors
-        }};
-    }}
-    
-    return {{ success: true }};
-}}'''
-    
-    return {
-        "success": True,
-        "rule_name": rule_name,
-        "entity": entity,
-        "trigger": "Created/Updated",
-        "field": field,
-        "condition": "validation check",
-        "value": conditions[0]['value'],
-        "javascript_code": javascript_code,
-        "description": f"Validates {entity} data to ensure: {prompt}"
-    }
+    try:
+        logger.info(f"General query: {request.prompt[:100]}...")
+        
+        # Use RAG system with general query type
+        result = rag_system.query(
+            user_query=request.prompt,
+            query_type="general",
+            doc_type_filter=request.doc_type_filter,
+            max_results=request.max_results,
+            similarity_threshold=request.similarity_threshold
+        )
+        
+        logger.info(f"RAG system result: success={result.get('success')}, response_length={len(result.get('response', ''))}, context_docs={len(result.get('context_docs', []))}")
+        
+        if result['success']:
+            logger.info("✅ General query successful")
+            return RuleResponse(
+                success=True,
+                response=result['response'],
+                context_docs=result['context_docs'],
+                metadata=result['metadata']
+            )
+        else:
+            logger.error(f"❌ General query failed: {result.get('error', 'Unknown error')}")
+            return RuleResponse(
+                success=False,
+                response=result.get('response', 'Failed to answer question'),
+                error=result.get('error', 'Unknown error'),
+                context_docs=result.get('context_docs', []),
+                metadata=result.get('metadata', {})
+            )
+        
+    except Exception as e:
+        logger.error(f"💥 Exception in general query: {e}")
+        logger.exception("Full exception traceback:")
+        return RuleResponse(
+            success=False,
+            response=f"Error: {str(e)}",
+            error=str(e)
+        )
 
 if __name__ == "__main__":
     import uvicorn

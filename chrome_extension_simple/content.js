@@ -26,6 +26,7 @@ class RuleGeneratorWidget {
         console.log('TargetProcess page detected, loading widget...');
         this.createWidget();
         this.setupEventListeners();
+        this.updateUIForRuleType(); // Initialize UI for default rule type
         console.log('TargetProcess Rule Generator widget loaded successfully');
     }
 
@@ -64,29 +65,38 @@ class RuleGeneratorWidget {
                 
                 <div class="tp-panel-content">
                     <div class="tp-form-group">
-                        <label>Rule Type:</label>
+                        <label>Action Type:</label>
                         <div class="tp-radio-group">
                             <label class="tp-radio-label">
-                                <input type="radio" name="ruleType" value="automation" checked>
-                                ⚡ Automation
+                                <input type="radio" name="ruleType" value="create_automation" checked>
+                                ⚡ Create Automation Rule
                             </label>
                             <label class="tp-radio-label">
-                                <input type="radio" name="ruleType" value="validation">
-                                ✅ Validation
+                                <input type="radio" name="ruleType" value="explain_rule">
+                                📖 Explain Existing Rule
+                            </label>
+                            <label class="tp-radio-label">
+                                <input type="radio" name="ruleType" value="improve_rule">
+                                🔧 Improve Rule
+                            </label>
+                            <label class="tp-radio-label">
+                                <input type="radio" name="ruleType" value="general">
+                                💬 General Question
                             </label>
                         </div>
                     </div>
                     
                     <div class="tp-form-group">
-                        <label for="tp-prompt">Describe your rule:</label>
+                        <label for="tp-prompt" id="tp-prompt-label">Describe your rule:</label>
                         <textarea 
                             id="tp-prompt" 
-                            placeholder="e.g., Create a bug when user story is blocked"
-                            rows="3"></textarea>
+                            placeholder="e.g., Create a task when user story is created"
+                            rows="4"></textarea>
+                        <div id="tp-prompt-help" class="tp-help-text"></div>
                     </div>
                     
                     <div class="tp-form-actions">
-                        <button id="tp-generate-btn" class="tp-btn-primary">Generate Rule</button>
+                        <button id="tp-generate-btn" class="tp-btn-primary">💡 Generate Rule</button>
                         <button id="tp-clear-btn" class="tp-btn-secondary">Clear</button>
                     </div>
                     
@@ -118,6 +128,7 @@ class RuleGeneratorWidget {
         const generateBtn = document.getElementById('tp-generate-btn');
         const clearBtn = document.getElementById('tp-clear-btn');
         const copyBtn = document.getElementById('tp-copy-btn');
+        const ruleTypeRadios = document.querySelectorAll('input[name="ruleType"]');
 
         // Toggle panel
         floatingBtn.addEventListener('click', () => {
@@ -144,12 +155,49 @@ class RuleGeneratorWidget {
             this.copyResult();
         });
 
+        // Handle rule type change
+        ruleTypeRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                this.updateUIForRuleType();
+            });
+        });
+
         // Close panel when clicking outside
         document.addEventListener('click', (e) => {
             if (!this.widget.contains(e.target)) {
                 this.hidePanel();
             }
         });
+    }
+
+    updateUIForRuleType() {
+        const selectedType = document.querySelector('input[name="ruleType"]:checked').value;
+        const promptLabel = document.getElementById('tp-prompt-label');
+        const promptTextarea = document.getElementById('tp-prompt');
+        const promptHelp = document.getElementById('tp-prompt-help');
+        const generateBtn = document.getElementById('tp-generate-btn');
+
+        if (selectedType === 'create_automation') {
+            promptLabel.textContent = 'Describe the automation rule you want to create:';
+            promptTextarea.placeholder = 'e.g., Create a bug when user story is not in Done state';
+            promptHelp.textContent = 'Describe what should happen automatically';
+            generateBtn.innerHTML = '⚡ Generate Rule';
+        } else if (selectedType === 'explain_rule') {
+            promptLabel.textContent = 'Paste the rule you want explained:';
+            promptTextarea.placeholder = 'Paste your JavaScript automation rule here...';
+            promptHelp.textContent = 'Paste the complete rule code for detailed explanation';
+            generateBtn.innerHTML = '📖 Explain Rule';
+        } else if (selectedType === 'improve_rule') {
+            promptLabel.textContent = 'Paste the rule you want to improve:';
+            promptTextarea.placeholder = 'Paste your existing rule here for improvement suggestions...';
+            promptHelp.textContent = 'Get suggestions to enhance your existing rule';
+            generateBtn.innerHTML = '🔧 Improve Rule';
+        } else if (selectedType === 'general') {
+            promptLabel.textContent = 'Ask any question about automation rules:';
+            promptTextarea.placeholder = 'e.g., How do I create a validation rule that prevents editing closed tasks?';
+            promptHelp.textContent = 'Ask general questions about TargetProcess automation';
+            generateBtn.innerHTML = '💬 Ask Question';
+        }
     }
 
     togglePanel() {
@@ -178,16 +226,37 @@ class RuleGeneratorWidget {
         const ruleType = document.querySelector('input[name="ruleType"]:checked').value;
 
         if (!prompt) {
-            this.showError('Please describe what you want the rule to do.');
+            const action = ruleType === 'create_automation' ? 'describe what you want the rule to do' : 'paste the rule you want explained';
+            this.showError(`Please ${action}.`);
             return;
         }
 
-        this.showLoading(true);
+        console.log('🚀 Processing request...', { prompt: prompt.substring(0, 100), ruleType });
+        this.showLoading(true, ruleType === 'create_automation' ? 'Generating rule...' : 'Explaining rule...');
         this.hideError();
         this.hideResult();
 
         try {
-            const response = await fetch('http://localhost:8000/generate-rule', {
+            // Use different endpoints based on rule type (same as Streamlit logic)
+            let endpoint;
+            switch(ruleType) {
+                case 'create_automation':
+                    endpoint = '/generate-rule';
+                    break;
+                case 'explain_rule':
+                    endpoint = '/explain-rule';
+                    break;
+                case 'improve_rule':
+                    endpoint = '/improve-rule';
+                    break;
+                case 'general':
+                    endpoint = '/general-query';
+                    break;
+                default:
+                    endpoint = '/generate-rule';
+            }
+            
+            const response = await fetch(`http://localhost:8000${endpoint}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -195,7 +264,9 @@ class RuleGeneratorWidget {
                 body: JSON.stringify({
                     prompt: prompt,
                     rule_type: ruleType,
-                    entity_type: "UserStory"
+                    entity_type: "UserStory",
+                    max_results: 5,      // Same as Streamlit default
+                    similarity_threshold: 0.7  // Same as Streamlit default
                 })
             });
 
@@ -204,48 +275,138 @@ class RuleGeneratorWidget {
             }
 
             const result = await response.json();
+            console.log('🔍 Full API response:', result);
+            console.log('🔍 Response content:', result.response);
+            console.log('🔍 Context docs:', result.context_docs?.length || 0);
 
             if (result.success) {
-                this.showResult(result);
+                if (!result.response || result.response.trim() === '') {
+                    console.error('⚠️ Empty response received from server');
+                    this.showError('Server returned empty response. Please try again.');
+                } else {
+                    console.log('✅ Displaying successful result');
+                    this.showResult(result, ruleType);
+                }
             } else {
-                this.showError(result.error || 'Failed to generate rule');
+                console.error('❌ Server reported failure:', result.error);
+                this.showError(result.error || `Failed to ${ruleType === 'create_automation' ? 'generate' : 'explain'} rule`);
             }
 
         } catch (error) {
-            console.error('Error generating rule:', error);
-            this.showError('Failed to connect to rule generator. Make sure the FastAPI server is running on localhost:8000');
+            console.error('❌ Error generating rule:', error);
+            console.error('Full error details:', {
+                message: error.message,
+                name: error.name,
+                stack: error.stack
+            });
+            
+            // More specific error messages
+            let errorMessage = 'Failed to connect to rule generator.';
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                errorMessage = '🔌 Cannot connect to FastAPI server. Please ensure it is running on localhost:8000';
+            } else if (error.message.includes('Server error')) {
+                errorMessage = `🔧 Server error: ${error.message}. Check server logs for details.`;
+            } else {
+                errorMessage = `❌ Error: ${error.message}`;
+            }
+            
+            this.showError(errorMessage);
         } finally {
             this.showLoading(false);
         }
     }
 
-    showResult(rule) {
+    showResult(result, ruleType) {
         const resultDiv = document.getElementById('tp-result');
         const contentDiv = document.getElementById('tp-result-content');
+        const headerTitle = document.querySelector('.tp-result-header h4');
         
-        contentDiv.innerHTML = `
-            <div class="tp-rule-summary">
-                <h5>📋 ${rule.rule_name}</h5>
-                <div class="tp-rule-details">
-                    <div><strong>Entity:</strong> ${rule.entity}</div>
-                    <div><strong>Trigger:</strong> ${rule.trigger}</div>
-                    <div><strong>Field:</strong> ${rule.field}</div>
-                    <div><strong>Condition:</strong> ${rule.condition}</div>
-                    <div><strong>Value:</strong> ${rule.value}</div>
-                </div>
-            </div>
-            
-            <div class="tp-code-section">
-                <h5>JavaScript Code:</h5>
-                <pre class="tp-code"><code>${rule.javascript_code}</code></pre>
-            </div>
-            
-            <div class="tp-description">
-                <p>${rule.description}</p>
+        // Update header based on rule type
+        headerTitle.textContent = ruleType === 'create_automation' ? 'Generated Rule' : 'Rule Explanation';
+        
+        // The new API returns a response string (markdown formatted)
+        let displayContent = `
+            <div class="tp-response-content">
+                ${this.formatResponse(result.response)}
             </div>
         `;
         
+        // Add context information if available
+        if (result.context_docs && result.context_docs.length > 0) {
+            displayContent += `
+                <div class="tp-context-section">
+                    <h5>📚 Source Documents (${result.context_docs.length})</h5>
+                    <div class="tp-context-docs">
+                        ${result.context_docs.map((doc, i) => `
+                            <div class="tp-context-doc">
+                                <strong>Document ${i + 1}:</strong> ${doc.metadata?.title || 'Unknown'}<br>
+                                <small>Type: ${doc.metadata?.doc_type || 'general'}, Similarity: ${((1 - (doc.distance || 0)) * 100).toFixed(1)}%</small>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Add metadata if available
+        if (result.metadata) {
+            displayContent += `
+                <div class="tp-metadata-section">
+                    <details>
+                        <summary>🔍 Query Details</summary>
+                        <pre class="tp-metadata">${JSON.stringify(result.metadata, null, 2)}</pre>
+                    </details>
+                </div>
+            `;
+        }
+        
+        contentDiv.innerHTML = displayContent;
         resultDiv.style.display = 'block';
+    }
+    
+    formatResponse(response) {
+        console.log('Raw response:', response);
+        
+        if (!response) return '<p>No response received</p>';
+        
+        // Convert markdown formatting to HTML
+        let formatted = response
+            // Handle specific pattern from Gemini: **JavaScript Code:** followed by code block
+            .replace(/\*\*JavaScript Code:\*\*\s*```javascript\s*([\s\S]*?)```/gi, '<div class="tp-code-section"><h5>💻 JavaScript Code:</h5><pre class="tp-code"><code>$1</code></pre></div>')
+            // Handle other JavaScript code blocks
+            .replace(/```javascript\s*([\s\S]*?)```/gi, '<div class="tp-code-section"><h5>💻 JavaScript Code:</h5><pre class="tp-code"><code>$1</code></pre></div>')
+            // Handle generic code blocks
+            .replace(/```([\s\S]*?)```/g, '<pre class="tp-code"><code>$1</code></pre>')
+            // Then handle inline code
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            // Handle specific formatting patterns from Gemini
+            .replace(/\*\*([^\*]+):\*\*/g, '<h5>$1:</h5>')
+            .replace(/🔧\s*THEN:/g, '<h4>🔧 THEN:</h4>')
+            .replace(/📝\s*DESCRIPTION:/g, '<h4>📝 DESCRIPTION:</h4>')
+            // Handle other bold and italic
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            // Convert double line breaks to paragraph breaks
+            .replace(/\r?\n\r?\n/g, '</p><p>')
+            // Convert single line breaks to <br>
+            .replace(/\r?\n/g, '<br>');
+        
+        // Wrap in paragraph tags if it doesn't start with a tag
+        if (!formatted.startsWith('<')) {
+            formatted = '<p>' + formatted;
+        }
+        if (!formatted.endsWith('>')) {
+            formatted = formatted + '</p>';
+        }
+        
+        // Clean up empty paragraphs
+        formatted = formatted
+            .replace(/<p><\/p>/g, '')
+            .replace(/<p>\s*<\/p>/g, '')
+            .replace(/<p>\s*<br>\s*<\/p>/g, '');
+        
+        console.log('Formatted response:', formatted);
+        return formatted;
     }
 
     showError(message) {
@@ -264,13 +425,27 @@ class RuleGeneratorWidget {
         resultDiv.style.display = 'none';
     }
 
-    showLoading(show) {
+    showLoading(show, message = 'Processing...') {
         const loadingDiv = document.getElementById('tp-loading');
         const generateBtn = document.getElementById('tp-generate-btn');
+        const loadingText = loadingDiv.querySelector('span');
+        const ruleType = document.querySelector('input[name="ruleType"]:checked').value;
         
         loadingDiv.style.display = show ? 'block' : 'none';
         generateBtn.disabled = show;
-        generateBtn.textContent = show ? 'Generating...' : 'Generate Rule';
+        
+        if (show) {
+            if (loadingText) loadingText.textContent = message;
+            generateBtn.innerHTML = '⏳ Processing...';
+        } else {
+            const buttonTexts = {
+                'create_automation': '⚡ Generate Rule',
+                'explain_rule': '📖 Explain Rule', 
+                'improve_rule': '🔧 Improve Rule',
+                'general': '💬 Ask Question'
+            };
+            generateBtn.innerHTML = buttonTexts[ruleType] || '⚡ Generate Rule';
+        }
     }
 
     clearForm() {
@@ -281,10 +456,26 @@ class RuleGeneratorWidget {
     }
 
     async copyResult() {
+        // Try to find JavaScript code first, then fall back to full response
+        let textToCopy = '';
+        
         const codeElement = document.querySelector('.tp-code code');
         if (codeElement) {
+            // Get the raw text content, not the HTML
+            textToCopy = codeElement.textContent || codeElement.innerText;
+            console.log('Copying JavaScript code:', textToCopy);
+        } else {
+            // If no code block, copy the entire response content
+            const responseElement = document.querySelector('.tp-response-content');
+            if (responseElement) {
+                textToCopy = responseElement.textContent || responseElement.innerText;
+                console.log('Copying full response:', textToCopy);
+            }
+        }
+        
+        if (textToCopy && textToCopy.trim()) {
             try {
-                await navigator.clipboard.writeText(codeElement.textContent);
+                await navigator.clipboard.writeText(textToCopy.trim());
                 
                 const copyBtn = document.getElementById('tp-copy-btn');
                 const originalText = copyBtn.textContent;
@@ -295,7 +486,35 @@ class RuleGeneratorWidget {
                 }, 2000);
             } catch (error) {
                 console.error('Failed to copy:', error);
+                // Fallback: create a temporary textarea for copying
+                this.fallbackCopy(textToCopy.trim());
             }
+        } else {
+            alert('No content to copy');
+        }
+    }
+    
+    fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        textarea.setSelectionRange(0, 99999);
+        
+        try {
+            document.execCommand('copy');
+            const copyBtn = document.getElementById('tp-copy-btn');
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = '✅ Copied!';
+            
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+            }, 2000);
+        } catch (error) {
+            console.error('Fallback copy failed:', error);
+            alert('Copy failed. Please select and copy manually.');
+        } finally {
+            document.body.removeChild(textarea);
         }
     }
 }

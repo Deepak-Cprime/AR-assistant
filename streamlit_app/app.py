@@ -36,12 +36,23 @@ def load_rag_system():
         st.error("GEMINI_API_KEY not found in environment variables")
         st.stop()
     
+    # Check for TargetProcess credentials (try both naming conventions)
+    tp_domain = os.getenv("TP_DOMAIN", "") or os.getenv("TARGETPROCESS_DOMAIN", "")
+    tp_token = os.getenv("TP_TOKEN", "") or os.getenv("TARGETPROCESS_TOKEN", "")
+    
+    if tp_domain and tp_token:
+        st.info(f"🔗 TargetProcess integration enabled for domain: {tp_domain}")
+    else:
+        st.warning("⚠️ TargetProcess integration disabled - TP_DOMAIN/TARGETPROCESS_DOMAIN and TP_TOKEN/TARGETPROCESS_TOKEN not configured")
+    
     try:
         rag = RAGSystem(
             docs_source_dir=str(DOCS_SOURCE_DIR),
             vector_db_path=str(VECTOR_DB_PATH),
             collection_name=COLLECTION_NAME,
             gemini_api_key=api_key,
+            tp_domain=tp_domain,
+            tp_token=tp_token,
             embedding_model=EMBEDDING_MODEL,
             chunk_size=CHUNK_SIZE,
             chunk_overlap=CHUNK_OVERLAP
@@ -73,6 +84,10 @@ def display_system_stats(rag):
         "Gemini API", 
         "✅ Connected" if stats.get('gemini_connected') else "❌ Error"
     )
+    
+    # TargetProcess integration status
+    tp_status = "✅ Connected" if rag.metadata_fetcher else "⚠️ Not configured"
+    st.sidebar.metric("TargetProcess", tp_status)
     
     if st.sidebar.button("🔄 Refresh Stats"):
         st.cache_resource.clear()
@@ -116,7 +131,7 @@ def main():
     
     # Advanced options
     with st.sidebar.expander("🔧 Advanced Options"):
-        max_results = st.slider("Max Results", 1, 10, 5)
+        max_results = st.slider("Max Results", 1, 10, 3)
         similarity_threshold = st.slider("Similarity Threshold", 0.1, 1.0, 0.7, 0.1)
     
     # Main interface
@@ -222,3 +237,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

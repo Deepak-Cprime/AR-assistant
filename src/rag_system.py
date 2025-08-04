@@ -244,22 +244,28 @@ class RAGSystem:
             if query_type == "create_automation":
                 # Extract entity type from query or tp_context
                 entity_type = self._extract_entity_type(user_query, tp_context)
+                logger.info(f"Extracted entity type: {entity_type}")
                 
-                if entity_type and self.metadata_fetcher:
-                    try:
-                        logger.info(f"Fetching live TargetProcess metadata for {entity_type}")
-                        entity_metadata = self.metadata_fetcher.get_entity_metadata(entity_type)
-                        
-                        # Get additional context if provided (e.g., from Chrome extension)
-                        if tp_context:
-                            live_tp_data = self._enrich_with_tp_context(entity_metadata, tp_context)
+                if entity_type:
+                    if self.metadata_fetcher:
+                        try:
+                            logger.info(f"Fetching live TargetProcess metadata for {entity_type}")
+                            entity_metadata = self.metadata_fetcher.get_entity_metadata(entity_type)
                             
-                        logger.info(f"Retrieved live metadata: {len(entity_metadata.get('standard_fields', []))} fields, {len(entity_metadata.get('states', []))} states")
-                        
-                    except Exception as e:
-                        logger.warning(f"Failed to get live metadata for {entity_type}: {e}")
-                        # Fall back to extracting entity info from context docs
-                        entity_metadata = self._extract_entity_info_from_docs(filtered_docs, entity_type)
+                            # Get additional context if provided (e.g., from Chrome extension)
+                            if tp_context:
+                                live_tp_data = self._enrich_with_tp_context(entity_metadata, tp_context)
+                                
+                            logger.info(f"Retrieved live metadata: {len(entity_metadata.get('standard_fields', []))} fields, {len(entity_metadata.get('states', []))} states")
+                            
+                        except Exception as e:
+                            logger.warning(f"Failed to get live metadata for {entity_type}: {e}")
+                            # Fall back to extracting entity info from context docs
+                            entity_metadata = self._extract_entity_info_from_docs(filtered_docs, entity_type)
+                    else:
+                        logger.warning(f"Entity type '{entity_type}' detected but metadata_fetcher not available")
+                elif self.metadata_fetcher:
+                    logger.warning("Metadata fetcher available but no entity type detected from query")
 
             # Step 3: Generate response using both RAG context and live TP data
             if query_type == "create_automation":

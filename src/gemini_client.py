@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class GeminiClient:
-    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: str, model_name: str = "gemini-1.5-flash"):
         """
         Initialize Gemini client
         """
@@ -29,7 +29,7 @@ class GeminiClient:
             
             # Preferred models in order
             preferred_models = [
-                "models/gemini-2.5-flash",
+                "models/gemini-1.5-flash",
                 "models/gemini-1.5-pro", 
                 "models/gemini-pro",
                 "models/gemini-1.0-pro"
@@ -49,7 +49,7 @@ class GeminiClient:
                 
         except Exception as e:
             logger.warning(f"Could not list models, using default: {e}")
-            self.model_name = "models/gemini-2.5-flash"
+            self.model_name = "models/gemini-1.5-flash"
         
         self.model = genai.GenerativeModel(self.model_name)
         
