@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 
 from .document_processor import DocumentProcessor, VectorDatabase
-from .gemini_client import GeminiClient
+from .openai_client import OpenAIClient
 from .metadata_fetcher import TargetprocessMetadata
 
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +20,7 @@ class RAGSystem:
                  docs_source_dir: str,
                  vector_db_path: str,
                  collection_name: str,
-                 gemini_api_key: str,
+                 openai_api_key: str,
                  tp_domain: str = "",
                  tp_token: str = "",
                  embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
@@ -45,9 +45,9 @@ class RAGSystem:
             collection_name=collection_name
         )
         
-        self.gemini_client = GeminiClient(
-            api_key=gemini_api_key,
-            model_name="gemini-1.5-flash"
+        self.openai_client = OpenAIClient(
+            api_key=openai_api_key,
+            model_name="gpt-3.5-turbo"
         )
         
         # Initialize metadata fetcher if credentials provided
@@ -184,6 +184,7 @@ class RAGSystem:
     def query(self, 
               user_query: str, 
               query_type: str = "general",
+              complexity_level: str = "auto",
               doc_type_filter: Optional[str] = None,
               max_results: int = 5,
               similarity_threshold: float = 0.7,
@@ -269,18 +270,19 @@ class RAGSystem:
 
             # Step 3: Generate response using both RAG context and live TP data
             if query_type == "create_automation":
-                response = self.gemini_client.generate_automation_rule(
+                response = self.openai_client.generate_automation_rule(
                     user_query, 
                     filtered_docs, 
                     entity_metadata,
-                    live_tp_data
+                    live_tp_data,
+                    complexity_level
                 )
             elif query_type == "explain_rule":
-                response = self.gemini_client.explain_existing_rule(user_query, filtered_docs)
+                response = self.openai_client.explain_existing_rule(user_query, filtered_docs)
             elif query_type == "improve_rule":
-                response = self.gemini_client.suggest_improvements(user_query, filtered_docs)
+                response = self.openai_client.suggest_improvements(user_query, filtered_docs)
             else:  # general
-                response = self.gemini_client.answer_question(user_query, filtered_docs)
+                response = self.openai_client.answer_question(user_query, filtered_docs)
             
             return {
                 'success': True,
@@ -433,11 +435,11 @@ class RAGSystem:
         """
         try:
             db_stats = self.vector_db.get_collection_stats()
-            gemini_status = self.gemini_client.test_connection()
+            openai_status = self.openai_client.test_connection()
             
             return {
                 'database_stats': db_stats,
-                'gemini_connected': gemini_status,
+                'openai_connected': openai_status,
                 'is_initialized': self.is_initialized,
                 'docs_source_dir': str(self.docs_source_dir),
                 'available_doc_types': self.get_available_doc_types()
@@ -480,12 +482,12 @@ class RAGSystem:
             if not md_files:
                 issues.append(f"No markdown files found in: {self.docs_source_dir}")
         
-        # Check Gemini API
+        # Check OpenAI API
         try:
-            if not self.gemini_client.test_connection():
-                issues.append("Gemini API connection failed")
+            if not self.openai_client.test_connection():
+                issues.append("OpenAI API connection failed")
         except Exception as e:
-            issues.append(f"Gemini API error: {str(e)}")
+            issues.append(f"OpenAI API error: {str(e)}")
         
         # Check vector database
         try:

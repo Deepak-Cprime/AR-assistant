@@ -20,9 +20,9 @@ def rebuild_database():
     if env_file.exists():
         load_dotenv(env_file)
     
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("ERROR: GEMINI_API_KEY not found in environment variables")
+        print("ERROR: OPENAI_API_KEY not found in environment variables")
         return False
     
     print(f"Source Directory: {DOCS_SOURCE_DIR}")
@@ -48,7 +48,7 @@ def rebuild_database():
             docs_source_dir=str(DOCS_SOURCE_DIR),
             vector_db_path=str(VECTOR_DB_PATH),
             collection_name=COLLECTION_NAME,
-            gemini_api_key=api_key,
+            openai_api_key=api_key,
             embedding_model=EMBEDDING_MODEL,
             chunk_size=CHUNK_SIZE,
             chunk_overlap=CHUNK_OVERLAP

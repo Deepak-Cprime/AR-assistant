@@ -20,9 +20,9 @@ def test_rag():
     if env_file.exists():
         load_dotenv(env_file)
     
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("ERROR: GEMINI_API_KEY not found")
+        print("ERROR: OPENAI_API_KEY not found")
         return False
     
     try:
@@ -32,7 +32,7 @@ def test_rag():
             docs_source_dir=str(DOCS_SOURCE_DIR),
             vector_db_path=str(VECTOR_DB_PATH),
             collection_name=COLLECTION_NAME,
-            gemini_api_key=api_key,
+            openai_api_key=api_key,
             embedding_model=EMBEDDING_MODEL,
             chunk_size=CHUNK_SIZE,
             chunk_overlap=CHUNK_OVERLAP

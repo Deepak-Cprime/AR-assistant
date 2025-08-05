@@ -20,10 +20,10 @@ def load_environment():
     if env_file.exists():
         load_dotenv(env_file)
     
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("Error: GEMINI_API_KEY not found in environment variables")
-        print("Please set your Gemini API key in .env file or environment")
+        print("Error: OPENAI_API_KEY not found in environment variables")
+        print("Please set your OpenAI API key in .env file or environment")
         sys.exit(1)
     
     return api_key
@@ -36,7 +36,7 @@ def initialize_rag_system(api_key: str, force_rebuild: bool = False) -> RAGSyste
         docs_source_dir=str(DOCS_SOURCE_DIR),
         vector_db_path=str(VECTOR_DB_PATH),
         collection_name=COLLECTION_NAME,
-        gemini_api_key=api_key,
+        openai_api_key=api_key,
         tp_domain=os.getenv("TARGETPROCESS_DOMAIN", ""),
         tp_token=os.getenv("TARGETPROCESS_TOKEN", ""),
         embedding_model=EMBEDDING_MODEL,
@@ -106,7 +106,7 @@ Example queries:
                 stats = rag.get_system_stats()
                 print(f"\nSystem Statistics:")
                 print(f"  Database documents: {stats.get('database_stats', {}).get('total_documents', 'Unknown')}")
-                print(f"  Gemini connected: {stats.get('gemini_connected', False)}")
+                print(f"  OpenAI connected: {stats.get('openai_connected', False)}")
                 print(f"  Initialized: {stats.get('is_initialized', False)}")
                 continue
                 
@@ -184,7 +184,7 @@ def main():
         stats = rag.get_system_stats()
         print("\nSystem Statistics:")
         print(f"  Database documents: {stats.get('database_stats', {}).get('total_documents', 'Unknown')}")
-        print(f"  Gemini connected: {stats.get('gemini_connected', False)}")
+        print(f"  OpenAI connected: {stats.get('openai_connected', False)}")
         print(f"  Initialized: {stats.get('is_initialized', False)}")
         print(f"  Available doc types: {len(stats.get('available_doc_types', []))}")
         return

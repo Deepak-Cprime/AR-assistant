@@ -37,7 +37,7 @@ else:
 # Initialize FastAPI app
 app = FastAPI(
     title="TargetProcess Rule Generator API (RAG-Powered)",
-    description="Generate and explain automation rules using RAG system with Gemini AI",
+    description="Generate and explain automation rules using RAG system with OpenAI",
     version="2.0.0"
 )
 
@@ -57,10 +57,10 @@ def initialize_rag_system():
     """Initialize RAG system exactly like Streamlit app"""
     global rag_system
     
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        logger.error("GEMINI_API_KEY not found in environment variables")
-        raise Exception("GEMINI_API_KEY not configured")
+        logger.error("OPENAI_API_KEY not found in environment variables")
+        raise Exception("OPENAI_API_KEY not configured")
     
     # Get TargetProcess credentials
     tp_domain = os.getenv("TARGETPROCESS_DOMAIN")
@@ -74,7 +74,7 @@ def initialize_rag_system():
             docs_source_dir=str(DOCS_SOURCE_DIR),
             vector_db_path=str(VECTOR_DB_PATH),
             collection_name=COLLECTION_NAME,
-            gemini_api_key=api_key,
+            openai_api_key=api_key,
             embedding_model=EMBEDDING_MODEL,
             chunk_size=CHUNK_SIZE,
             chunk_overlap=CHUNK_OVERLAP,
@@ -97,6 +97,7 @@ def initialize_rag_system():
 class RuleRequest(BaseModel):
     prompt: str
     rule_type: str = "create_automation"  # general, create_automation, explain_rule, improve_rule
+    complexity_level: Optional[str] = "auto"  # auto, simple, medium, complex
     entity_type: Optional[str] = "UserStory"
     doc_type_filter: Optional[str] = None
     max_results: Optional[int] = 5  # Same as Streamlit default
@@ -141,7 +142,7 @@ async def health_check():
         "status": "healthy",
         "service": "TargetProcess Rule Generator (RAG-Powered)",
         "rag_system_initialized": rag_system is not None,
-        "gemini_api_configured": bool(os.getenv("GEMINI_API_KEY"))
+        "openai_api_configured": bool(os.getenv("OPENAI_API_KEY"))
     }
 
 @app.get("/system-stats")
@@ -163,7 +164,7 @@ async def generate_rule(request: RuleRequest):
     Generate automation rule using full RAG system (same as Streamlit)
     """
     if not rag_system:
-        raise HTTPException(status_code=503, detail="RAG system not initialized. Please check GEMINI_API_KEY configuration.")
+        raise HTTPException(status_code=503, detail="RAG system not initialized. Please check OPENAI_API_KEY configuration.")
     
     try:
         logger.info(f"Generating rule: {request.prompt}")
@@ -173,6 +174,7 @@ async def generate_rule(request: RuleRequest):
         result = rag_system.query(
             user_query=request.prompt,
             query_type=request.rule_type,
+            complexity_level=request.complexity_level,
             doc_type_filter=request.doc_type_filter,
             max_results=request.max_results,
             similarity_threshold=request.similarity_threshold

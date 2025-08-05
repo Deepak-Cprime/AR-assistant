@@ -87,6 +87,28 @@ class RuleGeneratorWidget {
                     </div>
                     
                     <div class="tp-form-group">
+                        <label>Complexity Level:</label>
+                        <div class="tp-complexity-group">
+                            <label class="tp-complexity-label">
+                                <input type="radio" name="complexity" value="auto" checked>
+                                🤖 Auto-detect
+                            </label>
+                            <label class="tp-complexity-label">
+                                <input type="radio" name="complexity" value="simple">
+                                ⚡ Simple (Basic if-then)
+                            </label>
+                            <label class="tp-complexity-label">
+                                <input type="radio" name="complexity" value="medium">
+                                🔧 Medium (Some API calls)
+                            </label>
+                            <label class="tp-complexity-label">
+                                <input type="radio" name="complexity" value="complex">
+                                🚀 Complex (Full integration)
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="tp-form-group">
                         <label for="tp-prompt" id="tp-prompt-label">Describe your rule:</label>
                         <textarea 
                             id="tp-prompt" 
@@ -224,6 +246,7 @@ class RuleGeneratorWidget {
     async generateRule() {
         const prompt = document.getElementById('tp-prompt').value.trim();
         const ruleType = document.querySelector('input[name="ruleType"]:checked').value;
+        const complexity = document.querySelector('input[name="complexity"]:checked').value;
 
         if (!prompt) {
             const action = ruleType === 'create_automation' ? 'describe what you want the rule to do' : 'paste the rule you want explained';
@@ -264,6 +287,7 @@ class RuleGeneratorWidget {
                 body: JSON.stringify({
                     prompt: prompt,
                     rule_type: ruleType,
+                    complexity_level: complexity,  // Add complexity parameter
                     entity_type: "UserStory",
                     max_results: 5,      // Same as Streamlit default
                     similarity_threshold: 0.7  // Same as Streamlit default

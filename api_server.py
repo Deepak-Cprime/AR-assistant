@@ -36,16 +36,16 @@ def initialize_rag_system():
     if env_file.exists():
         load_dotenv(env_file)
     
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY not found in environment variables")
+        raise ValueError("OPENAI_API_KEY not found in environment variables")
     
     try:
         rag_system = RAGSystem(
             docs_source_dir=str(DOCS_SOURCE_DIR),
             vector_db_path=str(VECTOR_DB_PATH),
             collection_name=COLLECTION_NAME,
-            gemini_api_key=api_key,
+            openai_api_key=api_key,
             embedding_model=EMBEDDING_MODEL,
             chunk_size=CHUNK_SIZE,
             chunk_overlap=CHUNK_OVERLAP
@@ -235,7 +235,7 @@ def get_doc_types():
 
 @app.route('/test_api_key', methods=['POST'])
 def test_api_key():
-    """Test if a Gemini API key works"""
+    """Test if an OpenAI API key works"""
     try:
         data = request.get_json()
         if not data or 'api_key' not in data:
@@ -247,20 +247,16 @@ def test_api_key():
         api_key = data['api_key']
         
         # Create a temporary RAG system instance to test the API key
-        from src.gemini_client import GeminiClient
+        from src.openai_client import OpenAIClient
         
-        test_client = GeminiClient(api_key=api_key)
+        test_client = OpenAIClient(api_key=api_key)
         
-        # Try a simple test query
-        test_response = test_client.generate_response(
-            "Hello, this is a connection test. Please respond with 'Connection successful'.",
-            query_type="general",
-            context_docs=[]
-        )
+        # Try a simple test connection
+        connection_test = test_client.test_connection()
         
         return jsonify({
-            'success': True,
-            'message': 'API key is valid'
+            'success': connection_test,
+            'message': 'API key is valid' if connection_test else 'API key is invalid'
         })
         
     except Exception as e:

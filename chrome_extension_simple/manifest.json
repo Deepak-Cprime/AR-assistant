@@ -10,11 +10,7 @@
   ],
   
   "host_permissions": [
-    "*://*.targetprocess.com/*",
-    "*://*.tp-devops.com/*", 
-    "*://*.tpondemand.com/*",
-    "http://localhost:8000/*",
-    "<all_urls>"
+    "https://*.tpondemand.com/*"
   ],
   
   "background": {
@@ -24,12 +20,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.targetprocess.com/*",
-        "*://*.tp-devops.com/*",
-        "*://*.tpondemand.com/*",
-        "http://localhost:*/*",
-        "https://localhost:*/*",
-        "<all_urls>"
+        "https://*.tpondemand.com/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"],
