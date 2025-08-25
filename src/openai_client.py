@@ -99,7 +99,7 @@ class OpenAIClient:
         else:
             return "medium"
         
-    def generate_automation_rule(self, user_query: str, context_documents: List[Dict], entity_metadata: Dict = None, live_tp_data: Dict = None, complexity_level: str = "auto") -> str:
+    def generate_automation_rule(self, user_query: str, context_documents: List[Dict], entity_metadata: Dict = None, sample_entity_data: Dict = None, complexity_level: str = "auto") -> str:
         """
         Generate automation rule based on user query and retrieved context
         """
@@ -125,15 +125,40 @@ LIVE TARGETPROCESS METADATA (Use these exact field names and values):
 - Data Source: {entity_metadata.get('source', 'live_api')}
 """
 
-        # Add additional live context if available
-        live_context_text = ""
-        if live_tp_data:
-            live_context_text = f"""
-CURRENT TARGETPROCESS CONTEXT:
-- Page Context: {live_tp_data.get('context_type', 'unknown')}
-- Current Page: {live_tp_data.get('current_page_context', {}).get('url', 'N/A')}
-- Field Access Patterns: Available for JavaScript generation
-- Real-time Data: This is live data from your TargetProcess instance
+        # Add sample entity data context if available
+        sample_context_text = ""
+        if sample_entity_data and sample_entity_data.get('sample_data'):
+            sample_data = sample_entity_data['sample_data']
+            access_patterns = sample_entity_data.get('access_patterns', {})
+            
+            # Build example field values
+            field_examples = []
+            for field, pattern in access_patterns.items():
+                if field in sample_data:
+                    value = sample_data[field]
+                    if isinstance(value, dict) and 'Name' in value:
+                        field_examples.append(f"- {field}: {pattern} = \"{value['Name']}\"")
+                    elif isinstance(value, dict) and 'Id' in value:
+                        field_examples.append(f"- {field}: {pattern} = {value['Id']}")
+                    elif not isinstance(value, (dict, list)):
+                        field_examples.append(f"- {field}: {pattern} = \"{value}\"")
+            
+            sample_context_text = f"""
+REAL EXAMPLE FROM YOUR TARGETPROCESS INSTANCE:
+Entity: {sample_data.get('Name', 'Sample')} (ID: {sample_data.get('Id', 'N/A')})
+Type: {sample_entity_data.get('entity_type', 'Unknown')}
+Source: {sample_entity_data.get('source', 'unknown')}
+
+JAVASCRIPT ACCESS PATTERNS (Use these exact patterns):
+{chr(10).join(field_examples[:8])}  
+
+SAMPLE FIELD VALUES:
+- Current Priority: {sample_data.get('Priority', {}).get('Name', 'N/A')}
+- Current Owner: {sample_data.get('Owner', {}).get('Name', 'N/A')}
+- Current State: {sample_data.get('EntityState', {}).get('Name', 'N/A')}
+- Project: {sample_data.get('Project', {}).get('Name', 'N/A')}
+
+IMPORTANT: Use these EXACT access patterns in your generated JavaScript code.
 """
         
         prompt = f"""
@@ -148,7 +173,7 @@ IMPORTANT CONTEXT: You are generating JavaScript code that will run INSIDE a Tar
 
 {metadata_text}
 
-{live_context_text}
+{sample_context_text}
 
 WORKING EXAMPLES AND DOCUMENTATION:
 {context_text}

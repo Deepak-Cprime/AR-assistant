@@ -238,9 +238,9 @@ class RAGSystem:
                 logger.warning("No relevant documents found after filtering, using top results anyway")
                 filtered_docs = relevant_docs[:3]  # Use top 3 regardless of threshold
             
-            # Step 2: Get live TargetProcess metadata for precise automation rules
+            # Step 2: Get sample entity data for precise automation rules
             entity_metadata = None
-            live_tp_data = {}
+            sample_entity_data = {}
             
             if query_type == "create_automation":
                 # Extract entity type from query or tp_context
@@ -250,17 +250,23 @@ class RAGSystem:
                 if entity_type:
                     if self.metadata_fetcher:
                         try:
-                            logger.info(f"Fetching live TargetProcess metadata for {entity_type}")
+                            logger.info(f"Fetching sample {entity_type} data with real field patterns")
+                            
+                            # Get sample entity data (new approach)
+                            sample_entity_data = self.metadata_fetcher.get_sample_entity_data(entity_type)
+                            
+                            # Also get traditional metadata for backward compatibility
                             entity_metadata = self.metadata_fetcher.get_entity_metadata(entity_type)
                             
-                            # Get additional context if provided (e.g., from Chrome extension)
-                            if tp_context:
-                                live_tp_data = self._enrich_with_tp_context(entity_metadata, tp_context)
+                            if sample_entity_data.get('success'):
+                                logger.info(f"Retrieved sample {entity_type}: {sample_entity_data['field_count']} fields, "
+                                          f"source: {sample_entity_data['source']}")
+                                logger.info(f"Sample access patterns: {len(sample_entity_data['access_patterns'])} patterns extracted")
+                            else:
+                                logger.warning(f"Using fallback sample data for {entity_type}")
                                 
-                            logger.info(f"Retrieved live metadata: {len(entity_metadata.get('standard_fields', []))} fields, {len(entity_metadata.get('states', []))} states")
-                            
                         except Exception as e:
-                            logger.warning(f"Failed to get live metadata for {entity_type}: {e}")
+                            logger.warning(f"Failed to get sample {entity_type} data: {e}")
                             # Fall back to extracting entity info from context docs
                             entity_metadata = self._extract_entity_info_from_docs(filtered_docs, entity_type)
                     else:
@@ -268,15 +274,18 @@ class RAGSystem:
                 elif self.metadata_fetcher:
                     logger.warning("Metadata fetcher available but no entity type detected from query")
 
-            # Step 3: Generate response using both RAG context and live TP data
+            # Step 3: Generate response using RAG context and sample entity data
             if query_type == "create_automation":
                 response = self.openai_client.generate_automation_rule(
                     user_query, 
                     filtered_docs, 
                     entity_metadata,
-                    live_tp_data,
+                    sample_entity_data,  # Pass sample data instead of live_tp_data
                     complexity_level
                 )
+                
+                # Step 4: Response generated successfully with correct entity type
+                logger.info(f"Generated automation rule for entity type: {entity_type}")
             elif query_type == "explain_rule":
                 response = self.openai_client.explain_existing_rule(user_query, filtered_docs)
             elif query_type == "improve_rule":
@@ -293,7 +302,9 @@ class RAGSystem:
                     'num_context_docs': len(filtered_docs),
                     'doc_type_filter': doc_type_filter,
                     'entity_metadata': entity_metadata is not None,
-                    'live_tp_data': bool(live_tp_data),
+                    'sample_entity_data': bool(sample_entity_data and sample_entity_data.get('success')),
+                    'sample_data_source': sample_entity_data.get('source', 'none'),
+                    'detected_entity_type': sample_entity_data.get('entity_type', 'none'),
                     'timestamp': datetime.now().isoformat()
                 }
             }
@@ -310,37 +321,74 @@ class RAGSystem:
     
     def _extract_entity_type(self, user_query: str, tp_context: Dict = None) -> Optional[str]:
         """
-        Extract entity type from user query or TP context
+        Extract triggering entity type from user query using AI
         """
         # Check if provided in context (from Chrome extension)
         if tp_context and 'entityType' in tp_context:
             return tp_context['entityType']
         
-        # Extract from query text
-        query_lower = user_query.lower()
-        
-        # Common entity type patterns
-        entity_patterns = {
-            'user story': 'UserStory',
-            'userstory': 'UserStory', 
-            'story': 'UserStory',
-            'bug': 'Bug',
-            'task': 'Task',
-            'feature': 'Feature',
-            'epic': 'Epic',
-            'portfolio epic': 'PortfolioEpic',
-            'release': 'Release',
-            'project': 'Project',
-            'request': 'Request',
-            'risk': 'Risk',
-            'impediment': 'Impediment'
-        }
-        
-        for pattern, entity_type in entity_patterns.items():
-            if pattern in query_lower:
-                return entity_type
-        
-        return None
+        try:
+            # Use AI to identify the triggering entity
+            trigger_prompt = f"""
+Analyze this automation rule request and identify the triggering entity (the entity type that should trigger the rule when it changes).
+
+Request: "{user_query}"
+
+Return ONLY the triggering entity type from this list:
+- UserStory (if user story, story, user-story)  
+- Bug (if bug, defect, issue)
+- Task (if task, work item)
+- Feature (if feature, requirement)
+- Epic (if epic, portfolio epic)
+- Release (if release)
+- Project (if project)
+- Request (if request)
+- Risk (if risk)
+- Impediment (if impediment)
+- TestCase (if test case, testcase)
+
+Examples:
+"Create a user story when a feature is done" → Feature
+"Generate a task when bug is fixed" → Bug  
+"Make user story when story priority changes" → UserStory
+"Create bug when task fails" → Task
+
+Response (single word only):"""
+
+            response = self.openai_client.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": trigger_prompt}],
+                max_tokens=20,
+                temperature=0
+            )
+            
+            detected_entity = response.choices[0].message.content.strip()
+            
+            # Validate the response
+            valid_entities = ['UserStory', 'Bug', 'Task', 'Feature', 'Epic', 'Release', 
+                            'Project', 'Request', 'Risk', 'Impediment', 'TestCase']
+            
+            if detected_entity in valid_entities:
+                logger.info(f"AI detected triggering entity: '{detected_entity}' from query: '{user_query[:50]}...'")
+                return detected_entity
+            else:
+                logger.warning(f"AI returned invalid entity '{detected_entity}', falling back to UserStory")
+                return 'UserStory'
+                
+        except Exception as e:
+            logger.error(f"Failed to detect entity type using AI: {e}")
+            # Fallback to simple keyword detection
+            query_lower = user_query.lower()
+            if 'feature' in query_lower:
+                return 'Feature'
+            elif 'bug' in query_lower:
+                return 'Bug'
+            elif 'task' in query_lower:
+                return 'Task'
+            elif 'epic' in query_lower:
+                return 'Epic'
+            else:
+                return 'UserStory'
     
     def _enrich_with_tp_context(self, entity_metadata: Dict, tp_context: Dict) -> Dict:
         """

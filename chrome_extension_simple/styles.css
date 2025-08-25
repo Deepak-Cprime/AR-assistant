@@ -405,10 +405,22 @@
 /* Code section styling */
 .tp-code-section {
   margin: 16px 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.tp-code-section h5 {
-  margin: 0 0 8px 0;
+.tp-code-header {
+  background: #f8faff;
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tp-code-header h5 {
+  margin: 0;
   font-size: 14px;
   font-weight: 600;
   color: #374151;
@@ -417,11 +429,50 @@
   gap: 6px;
 }
 
+.tp-code-copy-btn {
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tp-code-copy-btn:hover {
+  background: #5a67d8;
+  transform: translateY(-1px);
+}
+
+.tp-code-copy-btn:active {
+  transform: translateY(0);
+}
+
 /* Improve overall code readability */
 .tp-code {
   font-weight: 400;
   tab-size: 2;
   -moz-tab-size: 2;
+  margin: 0;
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 16px;
+  border-radius: 0;
+  font-family: 'Courier New', Monaco, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  word-wrap: break-word;
+}
+
+.tp-code code {
+  white-space: pre;
+  display: block;
 }
 
 .tp-result-header {

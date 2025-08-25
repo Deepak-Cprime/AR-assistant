@@ -229,3 +229,184 @@ class TargetprocessMetadata:
         except Exception as e:
             logger.error(f"Connection test failed: {e}")
             return False
+    
+    def get_sample_entity_data(self, entity_type: str) -> Dict[str, Any]:
+        """
+        Fetch one sample entity to understand real data structure and access patterns
+        
+        Args:
+            entity_type: The entity type (UserStory, Bug, Task, etc.)
+            
+        Returns:
+            Dict with sample data and extracted access patterns
+        """
+        try:
+            # Map entity types to API endpoints
+            entity_endpoints = {
+                'UserStory': 'UserStories',
+                'Bug': 'Bugs', 
+                'Task': 'Tasks',
+                'Feature': 'Features',
+                'Epic': 'Epics',
+                'PortfolioEpic': 'PortfolioEpics',
+                'Release': 'Releases',
+                'Project': 'Projects',
+                'Request': 'Requests',
+                'Risk': 'Risks',
+                'Impediment': 'Impediments',
+                'TestCase': 'TestCases'
+            }
+            
+            endpoint = entity_endpoints.get(entity_type, f"{entity_type}s")
+            
+            # Define comprehensive include list for sample data
+            include_fields = [
+                'Id', 'Name', 'Description', 'CreateDate', 'ModifyDate',
+                'EntityState', 'Priority', 'Owner', 'Project', 'TimeSpent',
+                'TimeRemain', 'Effort', 'CustomFields'
+            ]
+            
+            # Add entity-specific fields
+            if entity_type == 'UserStory':
+                include_fields.extend(['Feature', 'Epic', 'Initiative', 'Team'])
+            elif entity_type == 'Bug':
+                include_fields.extend(['Severity', 'UserStory', 'Release'])
+            elif entity_type == 'Task':
+                include_fields.extend(['UserStory', 'Feature'])
+            elif entity_type == 'Feature':
+                include_fields.extend(['Epic', 'Release', 'Product'])
+            
+            # Build include parameter
+            include_param = '[' + ','.join(include_fields) + ']'
+            
+            logger.info(f"Fetching sample {entity_type} data from endpoint: {endpoint}")
+            
+            # Make API request for one sample item
+            params = {
+                'take': 1,
+                'include': include_param,
+                'where': f"Id gt 0"  # Ensure we get a valid item
+            }
+            
+            result = self._make_request(endpoint, params)
+            
+            if not result or 'Items' not in result or not result['Items']:
+                logger.warning(f"No sample data found for {entity_type}")
+                return self._get_default_sample_data(entity_type)
+            
+            sample_item = result['Items'][0]
+            
+            # Extract access patterns from the real data
+            access_patterns = self._extract_access_patterns_from_sample(sample_item)
+            
+            return {
+                'success': True,
+                'entity_type': entity_type,
+                'sample_data': sample_item,
+                'access_patterns': access_patterns,
+                'field_count': len([k for k in sample_item.keys() if k not in ['Id']]),
+                'source': 'live_sample',
+                'api_endpoint': endpoint
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get sample {entity_type} data: {e}")
+            return self._get_default_sample_data(entity_type)
+    
+    def _extract_access_patterns_from_sample(self, sample_data: Dict) -> Dict[str, str]:
+        """
+        Extract JavaScript access patterns from real sample data
+        
+        Args:
+            sample_data: The sample entity data from API
+            
+        Returns:
+            Dict mapping field names to JavaScript access patterns
+        """
+        patterns = {}
+        
+        for field_name, value in sample_data.items():
+            if field_name == 'Id':
+                patterns[field_name] = 'args.Current.Id'
+            elif isinstance(value, dict):
+                # Handle nested objects (Priority, Owner, EntityState, etc.)
+                if 'Name' in value:
+                    patterns[field_name] = f'args.Current.{field_name}.Name'
+                elif 'Id' in value:
+                    patterns[field_name] = f'args.Current.{field_name}.Id'
+                else:
+                    patterns[field_name] = f'args.Current.{field_name}'
+            elif isinstance(value, list):
+                # Handle collections (CustomFields, etc.)
+                patterns[field_name] = f'args.Current.{field_name}'
+            elif field_name == 'CustomFields' and isinstance(value, dict):
+                # Special handling for CustomFields
+                for custom_field, custom_value in value.items():
+                    if ' ' in custom_field or '-' in custom_field:
+                        patterns[f'CustomField_{custom_field}'] = f'args.Current.CustomFields["{custom_field}"]'
+                    else:
+                        patterns[f'CustomField_{custom_field}'] = f'args.Current.CustomFields.{custom_field}'
+            else:
+                # Simple fields (Name, Description, etc.)
+                patterns[field_name] = f'args.Current.{field_name}'
+        
+        return patterns
+    
+    def _get_default_sample_data(self, entity_type: str) -> Dict[str, Any]:
+        """
+        Return default sample data when API fails
+        
+        Args:
+            entity_type: The entity type
+            
+        Returns:
+            Default sample data structure
+        """
+        default_samples = {
+            'UserStory': {
+                'Id': 12345,
+                'Name': 'Sample User Story',
+                'Description': 'This is a sample user story description',
+                'Priority': {'Id': 1, 'Name': 'High'},
+                'Owner': {'Id': 123, 'Name': 'John Smith'},
+                'EntityState': {'Id': 2, 'Name': 'In Progress'},
+                'Project': {'Id': 456, 'Name': 'Sample Project'},
+                'CustomFields': {
+                    'BusinessValue': 'High',
+                    'StoryPoints': '8'
+                }
+            },
+            'Bug': {
+                'Id': 54321,
+                'Name': 'Sample Bug',
+                'Description': 'This is a sample bug description',
+                'Priority': {'Id': 1, 'Name': 'High'},
+                'Severity': {'Id': 1, 'Name': 'Critical'},
+                'Owner': {'Id': 123, 'Name': 'Jane Doe'},
+                'EntityState': {'Id': 1, 'Name': 'Open'},
+                'Project': {'Id': 456, 'Name': 'Sample Project'}
+            },
+            'Task': {
+                'Id': 67890,
+                'Name': 'Sample Task',
+                'Description': 'This is a sample task description',
+                'Owner': {'Id': 123, 'Name': 'Bob Wilson'},
+                'EntityState': {'Id': 2, 'Name': 'In Progress'},
+                'UserStory': {'Id': 12345, 'Name': 'Parent User Story'},
+                'TimeRemain': 4.0,
+                'TimeSpent': 2.0
+            }
+        }
+        
+        sample_item = default_samples.get(entity_type, default_samples['UserStory'])
+        access_patterns = self._extract_access_patterns_from_sample(sample_item)
+        
+        return {
+            'success': False,
+            'entity_type': entity_type,
+            'sample_data': sample_item,
+            'access_patterns': access_patterns,
+            'field_count': len([k for k in sample_item.keys() if k not in ['Id']]),
+            'source': 'default_fallback',
+            'api_endpoint': f'{entity_type}s (fallback)'
+        }
