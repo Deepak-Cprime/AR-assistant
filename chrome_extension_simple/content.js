@@ -386,9 +386,6 @@ class RuleGeneratorWidget {
         
         contentDiv.innerHTML = displayContent;
         resultDiv.style.display = 'block';
-        
-        // Set up event listeners for code copy buttons
-        this.setupCodeCopyListeners();
     }
     
     formatResponse(response) {
@@ -396,45 +393,14 @@ class RuleGeneratorWidget {
         
         if (!response) return '<p>No response received</p>';
         
-        // Store original code blocks before processing to preserve formatting
-        const codeBlocks = new Map();
-        let codeBlockIndex = 0;
-        
-        // First, extract and store all code blocks with their original formatting
-        let tempResponse = response
-            .replace(/\*\*JavaScript Code:\*\*\s*```javascript\s*([\s\S]*?)```/gi, (match, code) => {
-                const placeholder = `__CODE_BLOCK_${codeBlockIndex}__`;
-                codeBlocks.set(placeholder, {
-                    code: code,
-                    type: 'javascript',
-                    title: '💻 JavaScript Code:'
-                });
-                codeBlockIndex++;
-                return placeholder;
-            })
-            .replace(/```javascript\s*([\s\S]*?)```/gi, (match, code) => {
-                const placeholder = `__CODE_BLOCK_${codeBlockIndex}__`;
-                codeBlocks.set(placeholder, {
-                    code: code,
-                    type: 'javascript',
-                    title: '💻 JavaScript Code:'
-                });
-                codeBlockIndex++;
-                return placeholder;
-            })
-            .replace(/```([\s\S]*?)```/g, (match, code) => {
-                const placeholder = `__CODE_BLOCK_${codeBlockIndex}__`;
-                codeBlocks.set(placeholder, {
-                    code: code,
-                    type: 'generic',
-                    title: '💻 Code:'
-                });
-                codeBlockIndex++;
-                return placeholder;
-            });
-
         // Convert markdown formatting to HTML
-        let formatted = tempResponse
+        let formatted = response
+            // Handle specific pattern from Gemini: **JavaScript Code:** followed by code block
+            .replace(/\*\*JavaScript Code:\*\*\s*```javascript\s*([\s\S]*?)```/gi, '<div class="tp-code-section"><h5>💻 JavaScript Code:</h5><pre class="tp-code"><code>$1</code></pre></div>')
+            // Handle other JavaScript code blocks
+            .replace(/```javascript\s*([\s\S]*?)```/gi, '<div class="tp-code-section"><h5>💻 JavaScript Code:</h5><pre class="tp-code"><code>$1</code></pre></div>')
+            // Handle generic code blocks
+            .replace(/```([\s\S]*?)```/g, '<pre class="tp-code"><code>$1</code></pre>')
             // Then handle inline code
             .replace(/`([^`]+)`/g, '<code>$1</code>')
             // Handle specific formatting patterns from Gemini
@@ -448,20 +414,6 @@ class RuleGeneratorWidget {
             .replace(/\r?\n\r?\n/g, '</p><p>')
             // Convert single line breaks to <br>
             .replace(/\r?\n/g, '<br>');
-            
-        // Now replace code block placeholders with properly formatted HTML
-        codeBlocks.forEach((blockData, placeholder) => {
-            const codeId = 'code-' + Math.random().toString(36).substr(2, 9);
-            // Store the original code with a data attribute for copying
-            const codeHtml = `<div class="tp-code-section">
-                <div class="tp-code-header">
-                    <h5>${blockData.title}</h5>
-                    <button class="tp-code-copy-btn" data-code-id="${codeId}">📋 Copy</button>
-                </div>
-                <pre class="tp-code" id="${codeId}" data-original-code="${this.encodeForAttribute(blockData.code)}"><code>${this.escapeHtml(blockData.code)}</code></pre>
-            </div>`;
-            formatted = formatted.replace(placeholder, codeHtml);
-        });
         
         // Wrap in paragraph tags if it doesn't start with a tag
         if (!formatted.startsWith('<')) {
@@ -479,125 +431,6 @@ class RuleGeneratorWidget {
         
         console.log('Formatted response:', formatted);
         return formatted;
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    encodeForAttribute(text) {
-        return text
-            .replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-    }
-
-    decodeFromAttribute(text) {
-        return text
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&');
-    }
-
-    setupCodeCopyListeners() {
-        // Remove existing listeners to prevent duplicates
-        const existingButtons = document.querySelectorAll('.tp-code-copy-btn');
-        existingButtons.forEach(btn => {
-            btn.removeEventListener('click', this.handleCodeCopy);
-        });
-
-        // Add new listeners
-        const copyButtons = document.querySelectorAll('.tp-code-copy-btn');
-        copyButtons.forEach(button => {
-            button.addEventListener('click', this.handleCodeCopy.bind(this));
-        });
-    }
-
-    async handleCodeCopy(event) {
-        const button = event.target;
-        const codeId = button.getAttribute('data-code-id');
-        
-        if (!codeId) {
-            console.error('Code ID not found on button');
-            return;
-        }
-
-        const codeElement = document.getElementById(codeId);
-        if (!codeElement) {
-            console.error('Code element not found:', codeId);
-            return;
-        }
-        
-        // Try to get the original code from the data attribute first
-        let textToCopy = codeElement.getAttribute('data-original-code');
-        
-        if (textToCopy) {
-            // Decode the attribute value to restore original formatting
-            textToCopy = this.decodeFromAttribute(textToCopy);
-        } else {
-            // Fallback to getting text content if data attribute is not available
-            const codeContent = codeElement.querySelector('code');
-            if (!codeContent) {
-                console.error('Code content not found in element:', codeId);
-                return;
-            }
-            textToCopy = codeContent.textContent || codeContent.innerText;
-        }
-        
-        // Clean up any extra whitespace at the beginning and end, but preserve internal formatting
-        textToCopy = textToCopy.trim();
-        
-        console.log('Copying code block with formatting:', textToCopy);
-        
-        if (textToCopy) {
-            try {
-                await navigator.clipboard.writeText(textToCopy);
-                
-                const originalText = button.textContent;
-                button.textContent = '✅ Copied!';
-                
-                setTimeout(() => {
-                    button.textContent = originalText;
-                }, 2000);
-            } catch (error) {
-                console.error('Failed to copy code block:', error);
-                // Fallback: create a temporary textarea for copying
-                this.fallbackCopyCodeBlock(textToCopy, button);
-            }
-        } else {
-            alert('No code content to copy');
-        }
-    }
-
-    fallbackCopyCodeBlock(text, button) {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        textarea.setSelectionRange(0, 99999);
-        
-        try {
-            document.execCommand('copy');
-            const originalText = button.textContent;
-            button.textContent = '✅ Copied!';
-            
-            setTimeout(() => {
-                button.textContent = originalText;
-            }, 2000);
-        } catch (fallbackError) {
-            console.error('Fallback copy failed:', fallbackError);
-            alert('Copy failed. Please select and copy manually.');
-        } finally {
-            document.body.removeChild(textarea);
-        }
     }
 
     showError(message) {
@@ -647,13 +480,21 @@ class RuleGeneratorWidget {
     }
 
     async copyResult() {
-        // Copy the entire response content
+        // Try to find JavaScript code first, then fall back to full response
         let textToCopy = '';
         
-        const responseElement = document.querySelector('.tp-response-content');
-        if (responseElement) {
-            textToCopy = responseElement.textContent || responseElement.innerText;
-            console.log('Copying full response:', textToCopy);
+        const codeElement = document.querySelector('.tp-code code');
+        if (codeElement) {
+            // Get the raw text content, not the HTML
+            textToCopy = codeElement.textContent || codeElement.innerText;
+            console.log('Copying JavaScript code:', textToCopy);
+        } else {
+            // If no code block, copy the entire response content
+            const responseElement = document.querySelector('.tp-response-content');
+            if (responseElement) {
+                textToCopy = responseElement.textContent || responseElement.innerText;
+                console.log('Copying full response:', textToCopy);
+            }
         }
         
         if (textToCopy && textToCopy.trim()) {
