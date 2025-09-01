@@ -330,22 +330,13 @@ class RAGSystem:
         try:
             # Use AI to identify the triggering entity
             trigger_prompt = f"""
-Analyze this automation rule request and identify the triggering entity (the entity type that should trigger the rule when it changes).
+Analyze this automation rule request and identify the triggering entity (the entity type that changes to trigger the rule).
 
 Request: "{user_query}"
 
-Return ONLY the triggering entity type from this list:
-- UserStory (if user story, story, user-story)  
-- Bug (if bug, defect, issue)
-- Task (if task, work item)
-- Feature (if feature, requirement)
-- Epic (if epic, portfolio epic)
-- Release (if release)
-- Project (if project)
-- Request (if request)
-- Risk (if risk)
-- Impediment (if impediment)
-- TestCase (if test case, testcase)
+Look for:
+- What entity is being modified/updated that triggers the rule?
+- What changes to cause the automation?
 
 Examples:
 "Create a user story when a feature is done" → Feature
@@ -353,7 +344,7 @@ Examples:
 "Make user story when story priority changes" → UserStory
 "Create bug when task fails" → Task
 
-Response (single word only):"""
+Response (singular entity name only, capitalize first letter):"""
 
             response = self.openai_client.client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -363,32 +354,13 @@ Response (single word only):"""
             )
             
             detected_entity = response.choices[0].message.content.strip()
-            
-            # Validate the response
-            valid_entities = ['UserStory', 'Bug', 'Task', 'Feature', 'Epic', 'Release', 
-                            'Project', 'Request', 'Risk', 'Impediment', 'TestCase']
-            
-            if detected_entity in valid_entities:
-                logger.info(f"AI detected triggering entity: '{detected_entity}' from query: '{user_query[:50]}...'")
-                return detected_entity
-            else:
-                logger.warning(f"AI returned invalid entity '{detected_entity}', falling back to UserStory")
-                return 'UserStory'
+            logger.info(f"AI detected entity type: {detected_entity}")
+            return detected_entity
                 
         except Exception as e:
             logger.error(f"Failed to detect entity type using AI: {e}")
-            # Fallback to simple keyword detection
-            query_lower = user_query.lower()
-            if 'feature' in query_lower:
-                return 'Feature'
-            elif 'bug' in query_lower:
-                return 'Bug'
-            elif 'task' in query_lower:
-                return 'Task'
-            elif 'epic' in query_lower:
-                return 'Epic'
-            else:
-                return 'UserStory'
+            return None
+            
     
     def _enrich_with_tp_context(self, entity_metadata: Dict, tp_context: Dict) -> Dict:
         """

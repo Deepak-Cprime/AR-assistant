@@ -47,6 +47,68 @@ class TargetprocessMetadata:
             logger.error(f"Failed to parse JSON response: {e}")
             return None
     
+    def _pluralize_entity_type(self, entity_type: str) -> str:
+        """
+        Smart pluralization for entity types to API endpoints
+        Handles compound words and common English pluralization rules
+        """
+        # Handle compound words (CamelCase) - combine without space, then pluralize the last word
+        if any(c.isupper() for c in entity_type[1:]):  # Has uppercase after first char
+            # Split CamelCase into words
+            import re
+            words = re.findall(r'[A-Z][a-z]*|[a-z]+', entity_type)
+            
+            if len(words) > 1:
+                # Pluralize only the last word, keep others as is
+                last_word = words[-1]
+                pluralized_last = self._pluralize_word(last_word)
+                return ''.join(words[:-1]) + pluralized_last
+        
+        # Single word - apply pluralization rules
+        return self._pluralize_word(entity_type)
+    
+    def _pluralize_word(self, word: str) -> str:
+        """Apply English pluralization rules to a single word"""
+        if not word:
+            return word
+            
+        word_lower = word.lower()
+        
+        # Special irregular plurals
+        irregular_plurals = {
+            'person': 'people',
+            'child': 'children',
+            'foot': 'feet',
+            'tooth': 'teeth',
+            'mouse': 'mice',
+            'man': 'men',
+            'woman': 'women'
+        }
+        
+        if word_lower in irregular_plurals:
+            # Maintain original case pattern
+            result = irregular_plurals[word_lower]
+            if word[0].isupper():
+                result = result.capitalize()
+            return result
+        
+        # Words ending in 's', 'ss', 'sh', 'ch', 'x', 'z' -> add 'es'
+        if word_lower.endswith(('s', 'ss', 'sh', 'ch', 'x', 'z')):
+            return word + 'es'
+        
+        # Words ending in consonant + 'y' -> change 'y' to 'ies'
+        if len(word) > 1 and word_lower.endswith('y') and word[-2].lower() not in 'aeiou':
+            return word[:-1] + 'ies'
+        
+        # Words ending in 'f' or 'fe' -> change to 'ves'
+        if word_lower.endswith('f'):
+            return word[:-1] + 'ves'
+        elif word_lower.endswith('fe'):
+            return word[:-2] + 'ves'
+        
+        # Default: add 's'
+        return word + 's'
+    
     def get_entity_metadata(self, entity_type: str) -> Dict[str, Any]:
         """
         Get comprehensive metadata for an entity type
@@ -59,7 +121,8 @@ class TargetprocessMetadata:
         logger.info(f"Fetching metadata for {entity_type}")
         
         # Get sample entities to understand structure
-        entities = self._make_request(f"{entity_type}s", {"take": 25, "include": "[CustomFields,EntityState,Project]"})
+        endpoint = self._pluralize_entity_type(entity_type)
+        entities = self._make_request(endpoint, {"take": 25, "include": "[CustomFields,EntityState,Project]"})
         
         if not entities or 'Items' not in entities:
             logger.error(f"Failed to fetch {entity_type} data")
@@ -241,23 +304,8 @@ class TargetprocessMetadata:
             Dict with sample data and extracted access patterns
         """
         try:
-            # Map entity types to API endpoints
-            entity_endpoints = {
-                'UserStory': 'UserStories',
-                'Bug': 'Bugs', 
-                'Task': 'Tasks',
-                'Feature': 'Features',
-                'Epic': 'Epics',
-                'PortfolioEpic': 'PortfolioEpics',
-                'Release': 'Releases',
-                'Project': 'Projects',
-                'Request': 'Requests',
-                'Risk': 'Risks',
-                'Impediment': 'Impediments',
-                'TestCase': 'TestCases'
-            }
-            
-            endpoint = entity_endpoints.get(entity_type, f"{entity_type}s")
+            # Smart pluralization for API endpoints
+            endpoint = self._pluralize_entity_type(entity_type)
             
             # Define comprehensive include list for sample data
             include_fields = [
