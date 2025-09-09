@@ -48,28 +48,28 @@ class OpenAIClient:
             logger.warning(f"Could not list models, using default: {e}")
             self.model_name = model_name
         
-        # Configure base generation parameters
+        # Configure base generation parameters (updated for better accuracy)
         self.base_generation_config = {
-            "temperature": 0.7,
-            "top_p": 0.9,
+            "temperature": 0.3,  # Lower for less hallucination
+            "top_p": 0.8,        # More focused
             "max_tokens": 2048,
         }
         
     def _get_generation_config(self, complexity_level: str = "medium") -> dict:
-        """Get generation parameters based on complexity level"""
+        """Get generation parameters based on complexity level - updated for anti-hallucination"""
         configs = {
             "simple": {
-                "temperature": 0.2,  # More deterministic
+                "temperature": 0.1,  # More deterministic - reduced from 0.2
                 "top_p": 0.7,        # Less creative
                 "max_tokens": 800,   # Shorter responses
             },
             "medium": {
-                "temperature": 0.5,  # Balanced
+                "temperature": 0.2,  # More deterministic - reduced from 0.5
                 "top_p": 0.8,        # Moderate creativity
                 "max_tokens": 1500,  # Standard length
             },
             "complex": {
-                "temperature": 0.7,  # More creative
+                "temperature": 0.3,  # More controlled - reduced from 0.7
                 "top_p": 0.9,        # High creativity
                 "max_tokens": 2500,  # Longer responses
             }
@@ -99,7 +99,8 @@ class OpenAIClient:
         else:
             return "medium"
         
-    def generate_automation_rule(self, user_query: str, context_documents: List[Dict], entity_metadata: Dict = None, sample_entity_data: Dict = None, complexity_level: str = "auto") -> str:
+    # OLD COMPLEX PROMPT METHOD - COMMENTED OUT BUT KEPT FOR REFERENCE
+    def generate_automation_rule_old(self, user_query: str, context_documents: List[Dict], entity_metadata: Dict = None, sample_entity_data: Dict = None, complexity_level: str = "auto") -> str:
         """
         Generate automation rule based on user query and retrieved context
         """
@@ -162,7 +163,28 @@ IMPORTANT: Use these EXACT access patterns in your generated JavaScript code.
 """
         
         prompt = f"""
-You are an expert in Targetprocess automation rules. Your task is to create a working automation rule with a STRUCTURED, CONCISE format for a Chrome extension floating widget.
+You are an automation rule generator for TargetProcess. Follow the Plan & Execute methodology:
+
+## PLAN PHASE
+Analyze the user request and create:
+1. **Business Logic Chain**: Trigger → Condition → Action → Outcome
+2. **Entity Flow**: Map which entities are involved and how they relate
+3. **Validation Requirements**: What conditions must be met
+4. **Success Criteria**: Expected outcomes
+
+## EXECUTE PHASE  
+Generate implementation:
+1. **Pipeline Configuration**: JSON config for triggers and filters
+2. **JavaScript Code**: Implementation logic with proper API usage
+3. **Error Handling**: Logging and exception management
+4. **Documentation**: Clear explanation of the rule
+
+## CONTEXT USAGE
+Use retrieved RAG examples to:
+- Find similar patterns for business logic
+- Reuse proven code patterns and API calls
+- Ensure consistent error handling and logging
+- Follow established naming conventions
 
 IMPORTANT CONTEXT: You are generating JavaScript code that will run INSIDE a TargetProcess automation rule. The `args` object is automatically provided by TargetProcess and contains:
 - args.Current: The current entity being processed (UserStory, Bug, etc.)
@@ -179,6 +201,35 @@ WORKING EXAMPLES AND DOCUMENTATION:
 {context_text}
 
 USER REQUEST: {user_query}
+
+## PLAN PHASE ANALYSIS:
+
+**Step 1: Business Logic Chain**
+Analyze: {user_query}
+- Trigger: [Identify what event starts this rule]
+- Condition: [What conditions must be met]
+- Action: [What should happen]
+- Outcome: [Expected result]
+
+**Step 2: Entity Flow**
+Map entities involved:
+- Primary Entity: [Main entity being processed]
+- Related Entities: [Connected entities that may be affected]
+- Data Flow: [How information flows between entities]
+
+**Step 3: Validation Requirements**
+Identify constraints:
+- Field validations needed
+- Business rule constraints
+- Data integrity checks
+
+**Step 4: Success Criteria**
+Define expected outcomes:
+- What indicates successful execution
+- How to measure rule effectiveness
+- Error conditions to handle
+
+## EXECUTE PHASE IMPLEMENTATION:
 
 RESPONSE FORMAT REQUIREMENTS:
 Your response MUST follow this EXACT TargetProcess Rule Editor format:
@@ -210,9 +261,15 @@ RULE CONFIGURATION:
 📝 DESCRIPTION:
    [Brief description of what this rule does]
 
+🔍 BUSINESS LOGIC ANALYSIS:
+   - Trigger: [What starts this rule]
+   - Flow: [Entity relationships and data flow]
+   - Validation: [What conditions are checked]
+   - Outcome: [Expected results]
+
 ═══════════════════════════════════════════════════════════════════
 
-INSTRUCTIONS:
+EXECUTION INSTRUCTIONS:
 1. **ANALYZE THE PROVIDED DOCUMENTATION THOROUGHLY**: The context contains real TargetProcess automation rule examples and patterns. Study them carefully to understand:
    - The exact JavaScript syntax and API calls used
    - How entities are accessed and manipulated
@@ -225,7 +282,12 @@ INSTRUCTIONS:
    - Use the SAME field access patterns
    - Use the SAME entity creation/update patterns
 
-3. **MARK THE CORRECT TRIGGER**: Use [✓] for the applicable trigger based on the user's request
+3. **IMPLEMENT PLAN & EXECUTE METHODOLOGY**:
+   - First analyze the business logic chain
+   - Map entity relationships and data flow
+   - Identify validation requirements
+   - Define success criteria
+   - Then generate complete implementation
 
 4. **GENERATE COMPLETE, WORKING CODE**: 
    - Base your JavaScript code on the patterns found in the documentation
@@ -237,10 +299,12 @@ INSTRUCTIONS:
 5. **VALIDATE AUTOMATION RULE STRUCTURE**:
    - Every automation rule JavaScript code MUST be a complete function that can reference args
    - Use conditional logic: if (args.Current.SomeField) {{ ... }}
-   - Return proper command objects: {{ command: "targetprocess:CreateResource", payload: {{...}} }}
    - Return null if no action needed
 
-6. **BE PRECISE**: Use the exact field names, methods, and patterns demonstrated in the documentation
+6. **ENSURE COMPREHENSIVE ERROR HANDLING**:
+   - Log meaningful error messages
+   - Handle edge cases and null values
+   - Provide fallback behaviors
 
 CRITICAL REQUIREMENTS:
 - MUST follow the documentation patterns EXACTLY - do not invent syntax
@@ -249,13 +313,7 @@ CRITICAL REQUIREMENTS:
 - **JSON SYNTAX CRITICAL**: In JSON payloads, use string concatenation with + operator: "User Story " + args.Current.Id + " is overdue"
 - **NO TEMPLATE LITERALS IN JSON**: Never use backticks (`) in JSON field values - only use them in JavaScript code blocks
 - **PROPER QUOTES**: All JSON string values must have double quotes: "Open", not Open
-- Ensure the code is properly formatted and copyable in Streamlit
-
-**SYNTAX EXAMPLES FROM DOCUMENTATION:**
-✅ CORRECT: Name: "User Story " + args.Current.Id + " exceeds deadline"
-❌ WRONG: Name: \`User Story \${{args.Current.Id}} exceeds deadline\`
-❌ WRONG: Name: User Story + args.Current.Id + exceeds deadline
-
+- Generate the complete automation rule following the exact format and syntax from the retrieved examples
 
 
 
@@ -274,12 +332,160 @@ CRITICAL REQUIREMENTS:
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             return f"Error generating response: {str(e)}"
+
+    def generate_automation_rule(self, user_query: str, context_documents: List[Dict], entity_metadata: Dict = None, sample_entity_data: Dict = None, complexity_level: str = "auto") -> str:
+        """
+        NEW IMPROVED ANTI-HALLUCINATION PROMPT - Generate automation rule with improved accuracy
+        Based on improvements.md recommendations for constraint-based prompting
+        """
+        # Auto-detect complexity if needed
+        if complexity_level == "auto":
+            complexity_level = self._detect_complexity(user_query, entity_metadata)
+
+        generation_config = self._get_generation_config(complexity_level)
+        context_text = self._format_context(context_documents)
+
+        # Build metadata context more concisely
+        metadata_context = ""
+        if entity_metadata:
+            metadata_context = f"""
+AVAILABLE FIELDS (use these exact names):
+- Entity: {entity_metadata.get('entity_type')}
+- Fields: {', '.join(entity_metadata.get('standard_fields', [])[:10])}
+- Custom: {', '.join(entity_metadata.get('custom_fields', [])[:5])}
+- States: {', '.join(entity_metadata.get('states', [])[:8])}
+"""
+
+        # Build sample data context more focused
+        sample_context = ""
+        if sample_entity_data and sample_entity_data.get('sample_data'):
+            sample_data = sample_entity_data['sample_data']
+            access_patterns = sample_entity_data.get('access_patterns', {})
+
+            # Show only the most relevant field examples
+            key_examples = []
+            priority_fields = ['Name', 'Id', 'EntityState', 'Priority', 'Owner', 'Project']
+
+            for field in priority_fields:
+                if field in access_patterns and field in sample_data:
+                    pattern = access_patterns[field]
+                    value = sample_data[field]
+                    if isinstance(value, dict) and 'Name' in value:
+                        key_examples.append(f"{pattern} = \"{value['Name']}\"")
+                    elif isinstance(value, dict) and 'Id' in value:
+                        key_examples.append(f"{pattern} = {value['Id']}")
+
+            sample_context = f"""
+FIELD ACCESS PATTERNS (use exactly):
+{chr(10).join(key_examples[:6])}
+"""
+
+        # Simplified, focused prompt based on improvements.md
+        prompt = f"""You are a TargetProcess automation rule generator. Generate ONLY working code based on provided examples.
+
+CONSTRAINT: You MUST follow the exact patterns from the provided examples. Do NOT invent syntax.
+
+{metadata_context}
+{sample_context}
+
+EXAMPLES AND PATTERNS:
+{context_text}
+
+USER REQUEST: {user_query}
+
+RESPONSE FORMAT (follow exactly):
+
+📋 RULE: [Brief name]
+
+🎯 TRIGGER:
+Entity: [Type from metadata]
+Event: [Created/Updated/Deleted based on request]
+Conditions: [Specific field conditions if any]
+
+🔧 JAVASCRIPT:
+```javascript
+[Complete working code following the exact patterns from examples above.
+- Use args.Current, args.Previous, args.ResourceId as shown in examples
+- Copy API call patterns exactly from examples
+- Use same error handling patterns from examples
+- Return commands array or null as shown in examples]
+```
+
+CRITICAL RULES:
+1. Copy JavaScript syntax EXACTLY from the provided examples
+2. Use only API calls and patterns shown in examples
+3. Use args.Current.FieldName pattern for field access
+4. Return commands array for actions, null for no-op
+5. No template literals in JSON strings - use string concatenation
+6. All JSON values must have double quotes
+
+Generate complete, working automation rule now:"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "You generate TargetProcess automation rules. Follow provided examples exactly. Never invent syntax."},
+                    {"role": "user", "content": prompt}
+                ],
+                **generation_config
+            )
+            
+            # Validate the generated code
+            generated_code = response.choices[0].message.content
+            is_valid, issues = self.validate_generated_code(generated_code)
+            
+            if not is_valid:
+                logger.warning(f"Generated code validation issues: {issues}")
+                # Could implement retry logic here if needed
+            
+            return generated_code
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            return f"Error generating response: {str(e)}"
+
+    def validate_generated_code(self, generated_code: str) -> tuple:
+        """
+        Validate generated code against known patterns - from improvements.md recommendations
+        """
+        issues = []
+        
+        # Check for template literals in JSON context
+        if '`' in generated_code and '"' in generated_code:
+            # More sophisticated check - look for backticks inside JSON-like structures
+            lines = generated_code.split('\n')
+            for i, line in enumerate(lines):
+                if '`' in line and ('{' in line or '}' in line or '"' in line):
+                    issues.append(f"Line {i+1}: Template literals found in JSON context")
+        
+        # Check for args usage
+        if 'args.Current' not in generated_code and 'args.' not in generated_code:
+            issues.append("Missing args object usage")
+        
+        # Check for proper API patterns
+        has_api_calls = any(pattern in generated_code for pattern in [
+            'api.queryAsync', 'utils.createResource', 'tp.api', 'fetch'
+        ])
+        if not has_api_calls and 'javascript' in generated_code.lower():
+            issues.append("Missing proper API calls")
+        
+        # Check for proper return structure
+        if 'return ' not in generated_code and 'javascript' in generated_code.lower():
+            issues.append("Missing return statement")
+        
+        # Try-catch is optional - removed requirement
+        
+        # Check for double quotes in JSON (common issue)
+        if "'" in generated_code and '{' in generated_code:
+            issues.append("Single quotes detected - use double quotes in JSON")
+        
+        return len(issues) == 0, issues
     
     def explain_existing_rule(self, rule_content: str, context_documents: List[Dict]) -> str:
         """
         Explain an existing automation or validation rule
         """
-        generation_config = self._get_generation_config("medium")  # Default to medium for explanations
+        generation_config = self._get_generation_config("simple")  # Use simple for more focused explanations
         context_text = self._format_context(context_documents)
         
         prompt = f"""
@@ -321,7 +527,7 @@ Make the explanation clear and accessible for both technical and non-technical u
         """
         Suggest improvements for an existing rule
         """
-        generation_config = self._get_generation_config("complex")  # Use complex for improvements
+        generation_config = self._get_generation_config("medium")  # Use medium for balanced improvements
         context_text = self._format_context(context_documents)
         
         prompt = f"""
@@ -364,7 +570,7 @@ Focus on practical, implementable improvements.
         """
         Answer general questions about automation rules and Targetprocess
         """
-        generation_config = self._get_generation_config("medium")  # Default to medium for Q&A
+        generation_config = self._get_generation_config("simple")  # Use simple for more focused Q&A
         context_text = self._format_context(context_documents)
         
         prompt = f"""

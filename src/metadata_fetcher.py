@@ -23,6 +23,7 @@ class TargetprocessMetadata:
         self.token = token
         self.base_url = f"https://{self.domain}/api/v1"
         self.metadata_cache = {}
+        self.last_query_context = {'entity_type': None}
         
     def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
         """Make API request to Targetprocess"""
@@ -113,16 +114,20 @@ class TargetprocessMetadata:
         """
         Get comprehensive metadata for an entity type
         """
-        # Use cache if available
+        # Smart caching: use cache only if same entity type as last query
         cache_key = f"metadata_{entity_type.lower()}"
-        if cache_key in self.metadata_cache:
+        if (cache_key in self.metadata_cache and 
+            self.last_query_context['entity_type'] == entity_type):
+            logger.info(f"Using cached metadata for {entity_type} (same entity type)")
             return self.metadata_cache[cache_key]
+        elif cache_key in self.metadata_cache:
+            logger.info(f"Cache exists for {entity_type} but entity type changed, making fresh API call")
         
         logger.info(f"Fetching metadata for {entity_type}")
         
         # Get sample entities to understand structure
         endpoint = self._pluralize_entity_type(entity_type)
-        entities = self._make_request(endpoint, {"take": 25, "include": "[CustomFields,EntityState,Project]"})
+        entities = self._make_request(endpoint, {"take": 1, "include": "[CustomFields,EntityState,Project]"})
         
         if not entities or 'Items' not in entities:
             logger.error(f"Failed to fetch {entity_type} data")
@@ -131,8 +136,10 @@ class TargetprocessMetadata:
         # Extract metadata from sample entities
         metadata = self._extract_metadata_from_entities(entities['Items'], entity_type)
         
-        # Cache the result
+        # Cache the result and update context
         self.metadata_cache[cache_key] = metadata
+        self.last_query_context['entity_type'] = entity_type
+        logger.info(f"Updated last query context to entity_type: {entity_type}")
         
         return metadata
     
@@ -173,49 +180,69 @@ class TargetprocessMetadata:
         metadata["states"] = sorted(list(metadata["states"]))
         metadata["relationships"] = sorted(list(metadata["relationships"]))
         
-        # Get process states if we have EntityState info
-        if metadata["states"]:
-            process_states = self._get_process_states(entity_type)
-            if process_states:
-                metadata["process_states"] = process_states
+        # Get comprehensive process states for this entity type
+        process_states = self._get_process_states(entity_type)
+        if process_states:
+            metadata["process_states"] = process_states
+            # Update the states list with all available states (not just the one from sample entity)
+            all_state_names = [state['name'] for state in process_states if state.get('name')]
+            metadata["states"] = sorted(all_state_names)
         
         logger.info(f"Extracted metadata for {entity_type}: {len(metadata['standard_fields'])} standard fields, {len(metadata['custom_fields'])} custom fields")
+        logger.info(f"Standard fields: {metadata['standard_fields']}")
+        logger.info(f"Custom fields: {metadata['custom_fields']}")
+        logger.info(f"States found: {metadata['states']}")
+        logger.info(f"Relationships found: {metadata['relationships']}")
         
         return metadata
     
     def _get_process_states(self, entity_type: str) -> List[Dict]:
-        """Get detailed state information from processes"""
+        """Get detailed state information from EntityState endpoint with where clause filter"""
         try:
-            processes = self._make_request("Processes", {
-                "take": 50,
-                "include": "[EntityStates[EntityType,Name,IsInitial,IsPlanned,IsFinal]]",
-                "where": f"EntityStates.EntityType.Name=='{entity_type}'"
+            logger.info(f"Fetching EntityStates for {entity_type} using where clause filter")
+            
+            # Use the more efficient EntityState endpoint with where clause
+            entity_states = self._make_request("EntityState", {
+                "where": f"(EntityType.Name eq '{entity_type}')",
+                "format": "json"
             })
             
-            if not processes or 'Items' not in processes:
+            if not entity_states or 'Items' not in entity_states:
+                logger.warning(f"No EntityStates data received for {entity_type}")
                 return []
             
-            states = []
-            for process in processes['Items']:
-                if 'EntityStates' in process:
-                    for state in process['EntityStates']:
-                        if state.get('EntityType', {}).get('Name') == entity_type:
-                            states.append({
-                                'id': state.get('Id'),
-                                'name': state.get('Name'),
-                                'isInitial': state.get('IsInitial', False),
-                                'isPlanned': state.get('IsPlanned', False),
-                                'isFinal': state.get('IsFinal', False)
-                            })
+            items = entity_states['Items']
+            logger.info(f"Fetched {len(items)} EntityStates for {entity_type}")
             
-            return states
+            # Process the filtered results
+            all_states = []
+            for state in items:
+                all_states.append({
+                    'id': state.get('Id'),
+                    'name': state.get('Name'),
+                    'isInitial': state.get('IsInitial', False),
+                    'isPlanned': state.get('IsPlanned', False),
+                    'isFinal': state.get('IsFinal', False),
+                    'numericPriority': state.get('NumericPriority', 0),
+                    'role': state.get('Role', {}).get('Name') if state.get('Role') else None,
+                    'process': state.get('Process', {}).get('Name') if state.get('Process') else None,
+                    'workflow': state.get('Workflow', {}).get('Name') if state.get('Workflow') else None
+                })
+            
+            logger.info(f"Found {len(all_states)} states for {entity_type}")
+            
+            # Sort by NumericPriority for logical state ordering
+            all_states.sort(key=lambda x: x.get('numericPriority', 0))
+            
+            return all_states
             
         except Exception as e:
-            logger.error(f"Failed to get process states: {e}")
+            logger.error(f"Failed to get process states for {entity_type}: {e}")
             return []
     
     def _get_default_metadata(self, entity_type: str) -> Dict[str, Any]:
         """Return default metadata when API fails"""
+        logger.warning(f"Using default metadata for {entity_type} due to API failure")
         defaults = {
             "UserStory": {
                 "standard_fields": ["Id", "Name", "Description", "EntityState", "Project", "TimeSpent", "Effort"],
@@ -237,11 +264,19 @@ class TargetprocessMetadata:
             }
         }
         
-        return {
+        result = {
             "entity_type": entity_type,
             "source": "default",
             **defaults.get(entity_type, defaults["UserStory"])
         }
+        
+        logger.info(f"Default metadata for {entity_type}:")
+        logger.info(f"Standard fields: {result['standard_fields']}")
+        logger.info(f"Custom fields: {result['custom_fields']}")
+        logger.info(f"States: {result['states']}")
+        logger.info(f"Relationships: {result['relationships']}")
+        
+        return result
     
     def get_field_suggestions(self, entity_type: str, field_partial: str = "") -> List[str]:
         """Get field name suggestions for autocomplete"""
@@ -303,6 +338,15 @@ class TargetprocessMetadata:
         Returns:
             Dict with sample data and extracted access patterns
         """
+        # Smart caching for sample data
+        sample_cache_key = f"sample_{entity_type.lower()}"
+        if (sample_cache_key in self.metadata_cache and 
+            self.last_query_context['entity_type'] == entity_type):
+            logger.info(f"Using cached sample data for {entity_type} (same entity type)")
+            return self.metadata_cache[sample_cache_key]
+        elif sample_cache_key in self.metadata_cache:
+            logger.info(f"Sample cache exists for {entity_type} but entity type changed, making fresh API call")
+        
         try:
             # Smart pluralization for API endpoints
             endpoint = self._pluralize_entity_type(entity_type)
@@ -347,7 +391,7 @@ class TargetprocessMetadata:
             # Extract access patterns from the real data
             access_patterns = self._extract_access_patterns_from_sample(sample_item)
             
-            return {
+            result = {
                 'success': True,
                 'entity_type': entity_type,
                 'sample_data': sample_item,
@@ -356,6 +400,13 @@ class TargetprocessMetadata:
                 'source': 'live_sample',
                 'api_endpoint': endpoint
             }
+            
+            # Cache the result and update context
+            self.metadata_cache[sample_cache_key] = result
+            self.last_query_context['entity_type'] = entity_type
+            logger.info(f"Cached sample data for {entity_type} and updated context")
+            
+            return result
             
         except Exception as e:
             logger.error(f"Failed to get sample {entity_type} data: {e}")
