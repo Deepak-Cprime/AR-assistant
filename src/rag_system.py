@@ -1,3 +1,4 @@
+
 """
 Complete RAG (Retrieval-Augmented Generation) system for automation rules
 Combines document retrieval with Gemini AI generation
@@ -14,6 +15,9 @@ from .metadata_fetcher import TargetprocessMetadata
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Import agentic RAG components (lazy import to avoid circular dependencies)
+_agentic_orchestrator = None
 
 class RAGSystem:
     def __init__(self, 
@@ -60,6 +64,19 @@ class RAGSystem:
                 logger.warning(f"Failed to initialize metadata fetcher: {e}")
         
         self.is_initialized = False
+        
+    def _get_agentic_orchestrator(self):
+        """Lazy initialization of agentic RAG orchestrator"""
+        global _agentic_orchestrator
+        if _agentic_orchestrator is None:
+            try:
+                from .agentic_rag import AgenticRAGOrchestrator
+                _agentic_orchestrator = AgenticRAGOrchestrator(self)
+                logger.info("Agentic RAG orchestrator initialized")
+            except ImportError as e:
+                logger.warning(f"Could not import agentic RAG components: {e}")
+                _agentic_orchestrator = False  # Mark as failed to avoid repeated attempts
+        return _agentic_orchestrator if _agentic_orchestrator is not False else None
         
     def initialize_database(self, force_rebuild: bool = False) -> bool:
         """
@@ -191,6 +208,7 @@ class RAGSystem:
               tp_context: Dict = None) -> Dict[str, Any]:
         """
         Main query function that combines retrieval and generation with live TP data
+        Enhanced with agentic RAG support when complexity_level="agentic"
         """
         if not self.is_initialized:
             logger.warning("Database not initialized. Attempting to initialize...")
@@ -202,6 +220,24 @@ class RAGSystem:
                     'context_docs': [],
                     'metadata': {}
                 }
+        
+        # Check if agentic RAG mode is requested (when complexity_level = "complex")
+        if complexity_level == "complex" and query_type == "create_automation":
+            orchestrator = self._get_agentic_orchestrator()
+            if orchestrator:
+                logger.info("🧠 Using Agentic RAG mode for complex automation rule generation")
+                try:
+                    return orchestrator.process_complex_query(
+                        user_query=user_query,
+                        query_type=query_type,
+                        tp_context=tp_context,
+                        max_results=max_results
+                    )
+                except Exception as e:
+                    logger.error(f"Agentic RAG processing failed: {e}, falling back to simple RAG")
+                    # Fall through to simple RAG processing
+            else:
+                logger.warning("Agentic RAG requested but not available, using simple RAG")
         
         try:
             # Step 1: Retrieve relevant documents with priority for automation rules

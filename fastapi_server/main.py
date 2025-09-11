@@ -168,7 +168,10 @@ async def generate_rule(request: RuleRequest):
     
     try:
         logger.info(f"Generating rule: {request.prompt}")
-        logger.info(f"Query params: type={request.rule_type}, max_results={request.max_results}, threshold={request.similarity_threshold}")
+        logger.info(f"Query params: type={request.rule_type}, complexity={request.complexity_level}, max_results={request.max_results}, threshold={request.similarity_threshold}")
+        
+        if request.complexity_level == "complex":
+            logger.info("🧠 Complex mode requested - will use Agentic RAG if available")
         
         # Use RAG system query method (same as Streamlit)
         result = rag_system.query(
