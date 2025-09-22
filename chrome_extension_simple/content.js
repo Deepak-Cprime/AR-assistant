@@ -90,20 +90,20 @@ class RuleGeneratorWidget {
                         <label>Complexity Level:</label>
                         <div class="tp-complexity-group">
                             <label class="tp-complexity-label">
-                                <input type="radio" name="complexity" value="auto" checked>
-                                🤖 Auto-detect
-                            </label>
-                            <label class="tp-complexity-label">
                                 <input type="radio" name="complexity" value="simple">
                                 ⚡ Simple (Basic if-then)
                             </label>
                             <label class="tp-complexity-label">
-                                <input type="radio" name="complexity" value="medium">
+                                <input type="radio" name="complexity" value="medium" checked>
                                 🔧 Medium (Some API calls)
                             </label>
                             <label class="tp-complexity-label">
                                 <input type="radio" name="complexity" value="complex">
-                                🚀 Complex (Full integration)
+                                🚀 Complex (High creativity)
+                            </label>
+                            <label class="tp-complexity-label">
+                                <input type="radio" name="complexity" value="agentic">
+                                🧠 Agentic (Multi-agent system)
                             </label>
                         </div>
                     </div>

@@ -221,8 +221,8 @@ class RAGSystem:
                     'metadata': {}
                 }
         
-        # Check if agentic RAG mode is requested (when complexity_level = "complex")
-        if complexity_level == "complex" and query_type == "create_automation":
+        # Check if agentic RAG mode is requested (when complexity_level = "agentic")
+        if complexity_level == "agentic" and query_type == "create_automation":
             orchestrator = self._get_agentic_orchestrator()
             if orchestrator:
                 logger.info("🧠 Using Agentic RAG mode for complex automation rule generation")

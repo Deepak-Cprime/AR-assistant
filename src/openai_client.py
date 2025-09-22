@@ -72,32 +72,15 @@ class OpenAIClient:
                 "temperature": 0.3,  # More controlled - reduced from 0.7
                 "top_p": 0.9,        # High creativity
                 "max_tokens": 2500,  # Longer responses
+            },
+            "agentic": {
+                "temperature": 0.2,  # Moderate for multi-agent coordination
+                "top_p": 0.8,        # Balanced creativity for agent system
+                "max_tokens": 2000,  # Standard length for agent processing
             }
         }
         return configs.get(complexity_level, configs["medium"])
     
-    def _detect_complexity(self, user_query: str, entity_metadata: Dict = None) -> str:
-        """Auto-detect complexity level from user query"""
-        query_lower = user_query.lower()
-        
-        # Simple indicators
-        simple_keywords = ["create", "when", "if", "simple", "basic"]
-        # Complex indicators  
-        complex_keywords = ["api", "multiple", "complex", "advanced", "integrate", "fetch", "query"]
-        
-        simple_score = sum(1 for word in simple_keywords if word in query_lower)
-        complex_score = sum(1 for word in complex_keywords if word in query_lower)
-        
-        # Check if live metadata suggests complexity
-        if entity_metadata and len(entity_metadata.get('custom_fields', [])) > 3:
-            complex_score += 1
-            
-        if complex_score > simple_score:
-            return "complex"
-        elif simple_score > 0:
-            return "simple"
-        else:
-            return "medium"
         
     # OLD COMPLEX PROMPT METHOD - COMMENTED OUT BUT KEPT FOR REFERENCE
     def generate_automation_rule_old(self, user_query: str, context_documents: List[Dict], entity_metadata: Dict = None, sample_entity_data: Dict = None, complexity_level: str = "auto") -> str:

@@ -97,7 +97,7 @@ def initialize_rag_system():
 class RuleRequest(BaseModel):
     prompt: str
     rule_type: str = "create_automation"  # general, create_automation, explain_rule, improve_rule
-    complexity_level: Optional[str] = "auto"  # auto, simple, medium, complex
+    complexity_level: Optional[str] = "auto"  # auto, simple, medium, complex, agentic
     entity_type: Optional[str] = "UserStory"
     doc_type_filter: Optional[str] = None
     max_results: Optional[int] = 5  # Same as Streamlit default
@@ -170,8 +170,8 @@ async def generate_rule(request: RuleRequest):
         logger.info(f"Generating rule: {request.prompt}")
         logger.info(f"Query params: type={request.rule_type}, complexity={request.complexity_level}, max_results={request.max_results}, threshold={request.similarity_threshold}")
         
-        if request.complexity_level == "complex":
-            logger.info("🧠 Complex mode requested - will use Agentic RAG if available")
+        if request.complexity_level == "agentic":
+            logger.info("🧠 Agentic mode requested - will use multi-agent RAG system")
         
         # Use RAG system query method (same as Streamlit)
         result = rag_system.query(
